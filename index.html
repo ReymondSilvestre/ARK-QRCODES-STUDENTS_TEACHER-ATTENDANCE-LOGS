@@ -36,7 +36,7 @@
         function dedupeEntries(arr) {
             const map = {};
             arr.forEach(e => {
-                const key = `${e.studentID||''}_${e.date||''}_${String(e.time||'')}_${e.action||''}`;
+                const key = `${e.studentID||''}_${e.date||''}_${String(e.time||'')}_${e.action||''}_${e.teacherID||'general'}`;
                 if (!map[key]) map[key] = e;
             });
             return Object.values(map);
@@ -65,6 +65,27 @@
             catch (e) { console.error("Firebase Delete Error:", e); return false; }
         };
 
+        // ── BULK DELETE ALL ATTENDANCE DOCS FROM FIREBASE ──
+        window.deleteAllFirebaseAttendance = async () => {
+            const allDocIds = Object.values(window.attendanceDocIds || {});
+            if (!allDocIds.length) return 0;
+            let deleted = 0;
+            // Batch delete in parallel chunks of 20
+            const chunkSize = 20;
+            for (let i = 0; i < allDocIds.length; i += chunkSize) {
+                const chunk = allDocIds.slice(i, i + chunkSize);
+                await Promise.all(chunk.map(async (docId) => {
+                    try {
+                        await deleteDoc(doc(db, "attendance_logs", docId));
+                        deleted++;
+                    } catch(e) { console.warn("Failed to delete doc:", docId, e); }
+                }));
+            }
+            window.attendanceDocIds = {};
+            window.remoteAttendanceLogs = [];
+            return deleted;
+        };
+
         const q = query(attendanceCol, orderBy("serverTimestamp", "desc"), limit(500));
         onSnapshot(q, (snapshot) => {
             const remoteLogs = [];
@@ -81,7 +102,7 @@
                     teacherID: d.teacherID || null,
                     serverTimestamp: d.serverTimestamp
                 });
-                window.attendanceDocIds[`${d.studentID}_${d.date}_${d.time}_${d.action}`] = docSnap.id;
+                window.attendanceDocIds[`${d.studentID}_${d.date}_${d.time}_${d.action}_${d.teacherID||'general'}`] = docSnap.id;
             });
             window.remoteAttendanceLogs = remoteLogs;
             if (window.onAttendanceUpdate) window.onAttendanceUpdate();
@@ -150,7 +171,6 @@
             padding: 20px;
         }
 
-        /* Subtle paper texture background */
         body::before {
             content: '';
             position: fixed;
@@ -176,30 +196,12 @@
             margin-bottom: 14px;
             box-shadow: var(--shadow);
         }
-		.logo {
+        .logo {
             max-width: 80px;
             height: auto;
             filter: drop-shadow(0 4px 6px rgba(220, 38, 38, 0.3));
         }
-
-        .logo-wrap {
-            width: 52px;
-            height: 52px;
-            background: var(--red);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            font-weight: 900;
-            font-family: var(--font-display);
-            color: white;
-            flex-shrink: 0;
-            box-shadow: var(--shadow-red);
-        }
-
         .header-text { flex: 1; }
-
         .header-title {
             font-family: var(--font-display);
             font-size: clamp(14px, 2.2vw, 19px);
@@ -208,14 +210,12 @@
             letter-spacing: -0.3px;
             line-height: 1.25;
         }
-
         .header-sub {
             font-size: 11.5px;
             color: var(--text-muted);
             margin-top: 3px;
             font-family: var(--font-mono);
         }
-
         .live-clock {
             background: var(--red);
             color: white;
@@ -241,7 +241,6 @@
             font-size: 13px;
         }
         .context-bar.visible { display: flex; }
-
         .context-dot {
             width: 8px; height: 8px;
             background: #16a34a;
@@ -249,14 +248,11 @@
             flex-shrink: 0;
             animation: pulse-green 2s infinite;
         }
-
         @keyframes pulse-green {
             0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.4); }
             50% { box-shadow: 0 0 0 6px rgba(22,163,74,0); }
         }
-
         .context-name { font-family: var(--font-display); font-weight: 700; color: #15803d; font-size: 14px; }
-
         .tag-subject {
             background: #dcfce7;
             color: #15803d;
@@ -267,7 +263,6 @@
             font-family: var(--font-mono);
             font-weight: 500;
         }
-
         .context-logout {
             margin-left: auto;
             background: none;
@@ -296,7 +291,6 @@
             flex-wrap: wrap;
             box-shadow: var(--shadow);
         }
-
         .nav-tab {
             flex: 1;
             min-width: 110px;
@@ -316,7 +310,6 @@
             gap: 6px;
             box-shadow: none;
         }
-
         .nav-tab:hover { background: var(--bg-hover); color: var(--text); transform: none; box-shadow: none; }
         .nav-tab.active {
             background: var(--red);
@@ -329,7 +322,6 @@
         /* ── TAB CONTENT ── */
         .tab-content { display: none; }
         .tab-content.active { display: block; animation: fadeIn 0.25s ease; }
-
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(6px); }
             to { opacity: 1; transform: translateY(0); }
@@ -344,7 +336,6 @@
             box-shadow: var(--shadow);
             margin-bottom: 16px;
         }
-
         .card-title {
             font-family: var(--font-display);
             font-size: 17px;
@@ -363,7 +354,6 @@
             gap: 12px;
             margin-bottom: 20px;
         }
-
         .stat-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
@@ -373,31 +363,10 @@
             cursor: default;
             box-shadow: var(--shadow);
         }
-
-        .stat-card:hover {
-            border-color: var(--red-light);
-            box-shadow: var(--shadow-md);
-            transform: translateY(-2px);
-        }
-
+        .stat-card:hover { border-color: var(--red-light); box-shadow: var(--shadow-md); transform: translateY(-2px); }
         .stat-icon { font-size: 26px; margin-bottom: 10px; }
-
-        .stat-value {
-            font-family: var(--font-display);
-            font-size: 36px;
-            font-weight: 900;
-            color: var(--red);
-            line-height: 1;
-        }
-
-        .stat-label {
-            font-size: 11px;
-            color: var(--text-muted);
-            margin-top: 5px;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-            font-weight: 600;
-        }
+        .stat-value { font-family: var(--font-display); font-size: 36px; font-weight: 900; color: var(--red); line-height: 1; }
+        .stat-label { font-size: 11px; color: var(--text-muted); margin-top: 5px; text-transform: uppercase; letter-spacing: 0.8px; font-weight: 600; }
 
         /* ── SECTION STATUS ── */
         .section-status-grid {
@@ -406,7 +375,6 @@
             gap: 12px;
             margin-bottom: 20px;
         }
-
         .section-status-card {
             background: var(--bg-elevated);
             border: 1px solid var(--border);
@@ -414,72 +382,26 @@
             padding: 16px;
             transition: all 0.2s;
         }
-
         .section-status-card:hover { border-color: var(--red-mid); box-shadow: var(--shadow); }
-
-        .section-status-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-        }
-
-        .section-name {
-            font-family: var(--font-display);
-            font-weight: 700;
-            font-size: 14px;
-            color: var(--text);
-        }
-
-        .section-count-badge {
-            background: var(--red-soft);
-            color: var(--red);
-            font-family: var(--font-mono);
-            font-size: 11px;
-            font-weight: 500;
-            padding: 2px 8px;
-            border-radius: 10px;
-        }
-
+        .section-status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .section-name { font-family: var(--font-display); font-weight: 700; font-size: 14px; color: var(--text); }
+        .section-count-badge { background: var(--red-soft); color: var(--red); font-family: var(--font-mono); font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 10px; }
         .section-stats { display: flex; gap: 12px; }
         .section-stat { flex: 1; text-align: center; }
         .section-stat-val { font-family: var(--font-mono); font-size: 20px; font-weight: 700; }
         .section-stat-val.in { color: #16a34a; }
         .section-stat-val.out { color: var(--red); }
         .section-stat-lbl { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.8px; }
-
         .section-progress { margin-top: 10px; height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
         .section-progress-bar { height: 100%; background: var(--red); border-radius: 2px; transition: width 0.5s; }
 
         /* ── CHARTS ── */
-        .charts-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 14px;
-            margin-bottom: 20px;
-        }
-
-        .chart-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            padding: 20px;
-            box-shadow: var(--shadow);
-        }
-
-        .chart-title {
-            font-family: var(--font-display);
-            font-size: 13px;
-            font-weight: 700;
-            color: var(--text-muted);
-            margin-bottom: 14px;
-            text-transform: uppercase;
-            letter-spacing: 0.8px;
-        }
+        .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-bottom: 20px; }
+        .chart-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 20px; box-shadow: var(--shadow); }
+        .chart-title { font-family: var(--font-display); font-size: 13px; font-weight: 700; color: var(--text-muted); margin-bottom: 14px; text-transform: uppercase; letter-spacing: 0.8px; }
 
         /* ── ACTIVITY LIST ── */
         .activity-list { max-height: 360px; overflow-y: auto; }
-
         .activity-item {
             display: flex;
             align-items: center;
@@ -491,7 +413,6 @@
             border-left: 3px solid var(--red);
             transition: all 0.2s;
         }
-
         .activity-item:hover { background: var(--bg-hover); transform: translateX(3px); }
         .activity-icon { font-size: 20px; min-width: 36px; text-align: center; }
         .activity-name { font-weight: 600; font-size: 13px; color: var(--text); }
@@ -507,14 +428,11 @@
             max-height: 520px;
             overflow-y: auto;
         }
-
         .table-wrapper::-webkit-scrollbar { width: 6px; height: 6px; }
         .table-wrapper::-webkit-scrollbar-track { background: var(--bg-elevated); border-radius: 3px; }
         .table-wrapper::-webkit-scrollbar-thumb { background: var(--red-mid); border-radius: 3px; }
-
-        table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 650px; font-size: 13px; }
+        table { border-collapse: separate; border-spacing: 0; width: 100%; min-width: 750px; font-size: 13px; }
         thead { position: sticky; top: 0; z-index: 10; }
-
         th {
             background: var(--bg-elevated);
             font-family: var(--font-mono);
@@ -527,7 +445,6 @@
             border-bottom: 1px solid var(--border);
             text-align: left;
         }
-
         td {
             padding: 12px 14px;
             border-bottom: 1px solid rgba(0,0,0,0.04);
@@ -535,18 +452,11 @@
             font-size: 13px;
             background: var(--bg-card);
         }
-
         tr:hover td { background: var(--bg-elevated); }
         tr:last-child td { border-bottom: none; }
 
         /* ── FILTER BAR ── */
-        .filter-bar {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-bottom: 14px;
-        }
-
+        .filter-bar { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
         .filter-btn {
             padding: 6px 14px;
             background: var(--bg-elevated);
@@ -564,23 +474,13 @@
             box-shadow: none;
             margin-top: 0;
         }
-
         .filter-btn:hover { border-color: var(--red-mid); color: var(--text); transform: none; box-shadow: none; }
         .filter-btn.active { background: var(--red); border-color: var(--red); color: white; box-shadow: var(--shadow-red); }
-
-        .filter-count {
-            background: rgba(255,255,255,0.25);
-            padding: 1px 6px;
-            border-radius: 8px;
-            font-size: 10px;
-            font-family: var(--font-mono);
-        }
-
+        .filter-count { background: rgba(255,255,255,0.25); padding: 1px 6px; border-radius: 8px; font-size: 10px; font-family: var(--font-mono); }
         .filter-btn:not(.active) .filter-count { background: var(--border); color: var(--text-dim); }
 
         /* ── SEARCH ── */
         .search-wrap { position: relative; margin-bottom: 16px; }
-
         .search-wrap input {
             width: 100%;
             padding: 11px 16px 11px 42px;
@@ -592,38 +492,19 @@
             font-family: var(--font-body);
             transition: all 0.2s;
         }
-
-        .search-wrap input:focus {
-            outline: none;
-            border-color: var(--red);
-            background: var(--bg-card);
-            box-shadow: 0 0 0 3px var(--red-glow);
-        }
-
+        .search-wrap input:focus { outline: none; border-color: var(--red); background: var(--bg-card); box-shadow: 0 0 0 3px var(--red-glow); }
         .search-wrap input::placeholder { color: var(--text-dim); }
         .search-icon { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 15px; pointer-events: none; color: var(--text-dim); }
-
         .search-clear {
-            position: absolute;
-            right: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: none;
-            border: none;
-            color: var(--text-dim);
-            cursor: pointer;
-            font-size: 16px;
-            padding: 4px;
-            margin: 0;
-            box-shadow: none;
-            display: none;
+            position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; color: var(--text-dim); cursor: pointer;
+            font-size: 16px; padding: 4px; margin: 0; box-shadow: none; display: none;
         }
         .search-clear:hover { color: var(--red); transform: translateY(-50%); box-shadow: none; }
 
         /* ── FORMS ── */
         .form-group { display: flex; flex-direction: column; gap: 6px; }
         .form-label { font-size: 11.5px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; font-family: var(--font-mono); }
-
         .form-input {
             padding: 11px 14px;
             background: var(--bg-elevated);
@@ -635,14 +516,7 @@
             transition: all 0.2s;
             width: 100%;
         }
-
-        .form-input:focus {
-            outline: none;
-            border-color: var(--red);
-            background: var(--bg-card);
-            box-shadow: 0 0 0 3px var(--red-glow);
-        }
-
+        .form-input:focus { outline: none; border-color: var(--red); background: var(--bg-card); box-shadow: 0 0 0 3px var(--red-glow); }
         .form-input::placeholder { color: var(--text-dim); }
 
         /* ── BUTTONS ── */
@@ -660,16 +534,9 @@
             box-shadow: 0 2px 8px rgba(220,38,38,0.25);
             margin-top: 8px;
         }
-
         button:hover { background: var(--red-dark); transform: translateY(-1px); box-shadow: 0 4px 14px rgba(220,38,38,0.35); }
         button:active { transform: translateY(0); }
-
-        .btn-ghost {
-            background: transparent;
-            border: 1.5px solid var(--border);
-            color: var(--text-muted);
-            box-shadow: none;
-        }
+        .btn-ghost { background: transparent; border: 1.5px solid var(--border); color: var(--text-muted); box-shadow: none; }
         .btn-ghost:hover { border-color: var(--border-mid); color: var(--text); background: var(--bg-hover); box-shadow: none; }
         .btn-danger { background: #7f1d1d; }
         .btn-danger:hover { background: #991b1b; }
@@ -689,7 +556,6 @@
             position: relative;
             box-shadow: var(--shadow-md);
         }
-
         .qr-overlay {
             position: absolute;
             top: 50%; left: 50%;
@@ -703,28 +569,69 @@
             box-shadow: 0 0 0 9999px rgba(0,0,0,0.35);
         }
 
-        /* ── TEACHER SELECT ── */
-        .teacher-select-wrap {
+        /* ── SESSION MODE CARD ── */
+        .session-mode-card {
             background: var(--bg-elevated);
             border: 1.5px solid var(--border);
             border-radius: var(--radius-sm);
             padding: 18px;
             margin-bottom: 14px;
         }
-
-        .teacher-select-label {
+        .session-mode-label {
             font-size: 12px;
             font-weight: 700;
             color: var(--text-muted);
             text-transform: uppercase;
             letter-spacing: 0.8px;
             font-family: var(--font-mono);
-            margin-bottom: 10px;
-            display: block;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
         }
+        .mode-toggle-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 14px;
+            flex-wrap: wrap;
+        }
+        .mode-btn {
+            flex: 1;
+            min-width: 140px;
+            padding: 12px 16px;
+            border-radius: var(--radius-sm);
+            background: var(--bg-card);
+            border: 2px solid var(--border);
+            color: var(--text-muted);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: var(--font-body);
+            text-align: center;
+            box-shadow: none;
+            margin-top: 0;
+        }
+        .mode-btn:hover { border-color: var(--red-mid); color: var(--text); transform: none; }
+        .mode-btn.active {
+            background: var(--red);
+            border-color: var(--red-dark);
+            color: white;
+            box-shadow: var(--shadow-red);
+        }
+        .mode-btn.active:hover { background: var(--red-dark); transform: none; }
+        .mode-icon { font-size: 20px; display: block; margin-bottom: 4px; }
+        .mode-name { font-size: 12px; font-weight: 700; }
+        .mode-desc { font-size: 10px; opacity: 0.75; margin-top: 2px; font-family: var(--font-mono); }
+
+        /* ── TEACHER SELECT SECTION ── */
+        .teacher-select-section {
+            display: none;
+            animation: fadeIn 0.2s ease;
+        }
+        .teacher-select-section.visible { display: block; }
 
         .teacher-dropdown-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-
         .teacher-dropdown {
             flex: 1;
             min-width: 200px;
@@ -743,15 +650,13 @@
             background-repeat: no-repeat;
             background-position: right 12px center;
         }
-
         .teacher-dropdown:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px var(--red-glow); }
 
         .btn-select-teacher { padding: 11px 18px; margin-top: 0; white-space: nowrap; flex-shrink: 0; }
-
         .teacher-hint { font-size: 11px; color: var(--text-dim); margin-top: 8px; font-family: var(--font-mono); }
         .teacher-hint.has-teacher { color: #16a34a; }
 
-        /* ── ACTIVE TEACHER BAR ── */
+        /* ── ACTIVE SCANNER BAR ── */
         .scanner-active-bar {
             background: linear-gradient(135deg, #f0fdf4, #dcfce7);
             border: 1px solid #bbf7d0;
@@ -768,6 +673,61 @@
         .scan-active-name { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: #15803d; }
         .scan-active-subject { font-size: 12px; color: #16a34a; margin-top: 2px; font-weight: 600; }
 
+        /* ── GENERAL MODE BAR ── */
+        .general-mode-bar {
+            background: linear-gradient(135deg, #eff6ff, #dbeafe);
+            border: 1px solid #bfdbfe;
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            margin-bottom: 14px;
+            display: none;
+            align-items: center;
+            gap: 12px;
+        }
+        .general-mode-bar.visible { display: flex; }
+        .gen-dot { width: 10px; height: 10px; background: #2563eb; border-radius: 50%; animation: pulse-blue 2s infinite; flex-shrink: 0; }
+        @keyframes pulse-blue {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(37,99,235,0.4); }
+            50% { box-shadow: 0 0 0 6px rgba(37,99,235,0); }
+        }
+
+        /* ── HOW IT WORKS INFO ── */
+        .how-it-works {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 14px 16px;
+            margin-bottom: 14px;
+        }
+        .how-title {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 10px;
+        }
+        .how-steps { display: flex; flex-direction: column; gap: 7px; }
+        .how-step {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 12px;
+            color: var(--text-sub);
+            line-height: 1.5;
+        }
+        .how-step-num {
+            width: 20px; height: 20px;
+            background: var(--red);
+            color: white;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 10px; font-weight: 800;
+            flex-shrink: 0;
+            font-family: var(--font-mono);
+        }
+
         /* ── SCAN POPUP ── */
         #scan-display {
             position: fixed;
@@ -782,18 +742,49 @@
             display: none;
             text-align: center;
             width: calc(100% - 40px);
-            max-width: 380px;
+            max-width: 400px;
             animation: popIn 0.3s cubic-bezier(0.68,-0.55,0.265,1.55);
         }
-
         @keyframes popIn {
             0% { transform: translate(-50%,-50%) scale(0.85); opacity: 0; }
             100% { transform: translate(-50%,-50%) scale(1); opacity: 1; }
         }
-
         #scan-display .icon { font-size: 48px; margin-bottom: 10px; animation: bounce 0.5s ease; }
         @keyframes bounce { 0%,100%{transform:translateY(0);}50%{transform:translateY(-8px);} }
         #scan-display strong { font-family: var(--font-display); font-size: 22px; font-weight: 800; display: block; margin: 6px 0 10px; }
+
+        /* ── SUBJECT SESSIONS MINI LIST (in scan popup) ── */
+        .session-list {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 10px 12px;
+            margin-top: 10px;
+            text-align: left;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+        .session-list-title {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 6px;
+        }
+        .session-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+            font-size: 11px;
+            color: var(--text-sub);
+        }
+        .session-item:last-child { border-bottom: none; }
+        .session-dot-in  { width:7px;height:7px;background:#16a34a;border-radius:50%;flex-shrink:0; }
+        .session-dot-out { width:7px;height:7px;background:var(--red);border-radius:50%;flex-shrink:0; }
 
         /* ── VOICE BAR ── */
         .voice-bar {
@@ -808,83 +799,32 @@
             flex-wrap: wrap;
         }
         .voice-bar label { font-size: 12px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.8px; white-space: nowrap; font-family: var(--font-mono); }
-        .voice-bar select {
-            flex: 1; min-width: 180px;
-            padding: 8px 12px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-sm);
-            color: var(--text);
-            font-size: 13px;
-            font-family: var(--font-body);
-        }
+        .voice-bar select { flex: 1; min-width: 180px; padding: 8px 12px; background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 13px; font-family: var(--font-body); }
 
         /* ── PAGINATION ── */
-        .pagination {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: 16px;
-            flex-wrap: wrap;
-            gap: 10px;
-        }
-
+        .pagination { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; flex-wrap: wrap; gap: 10px; }
         .page-info { font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
         .page-btns { display: flex; gap: 6px; align-items: center; }
-
         .page-btn {
-            padding: 7px 14px;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            color: var(--text-muted);
-            border-radius: var(--radius-sm);
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-family: var(--font-body);
-            margin-top: 0;
-            box-shadow: none;
+            padding: 7px 14px; background: var(--bg-elevated); border: 1px solid var(--border);
+            color: var(--text-muted); border-radius: var(--radius-sm); font-size: 12px;
+            font-weight: 600; cursor: pointer; transition: all 0.2s; font-family: var(--font-body);
+            margin-top: 0; box-shadow: none;
         }
-
         .page-btn:hover:not(:disabled) { border-color: var(--red-mid); color: var(--text); transform: none; }
         .page-btn:disabled { opacity: 0.35; cursor: not-allowed; }
-
-        .page-size-select {
-            padding: 7px 10px;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            color: var(--text-muted);
-            border-radius: var(--radius-sm);
-            font-size: 12px;
-            font-family: var(--font-body);
-        }
+        .page-size-select { padding: 7px 10px; background: var(--bg-elevated); border: 1px solid var(--border); color: var(--text-muted); border-radius: var(--radius-sm); font-size: 12px; font-family: var(--font-body); }
 
         /* ── MODAL ── */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.4);
-            z-index: 10000;
-            backdrop-filter: blur(4px);
-        }
-
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 10000; backdrop-filter: blur(4px); }
         .modal {
-            position: fixed;
-            top: 50%; left: 50%;
+            position: fixed; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            padding: 32px;
-            max-width: 420px;
-            width: calc(100% - 32px);
-            z-index: 10001;
-            box-shadow: var(--shadow-md);
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 20px; padding: 32px; max-width: 420px;
+            width: calc(100% - 32px); z-index: 10001; box-shadow: var(--shadow-md);
             animation: popIn 0.3s cubic-bezier(0.68,-0.55,0.265,1.55);
         }
-
         .modal-icon { font-size: 48px; text-align: center; margin-bottom: 12px; }
         .modal-title { font-family: var(--font-display); font-size: 20px; font-weight: 800; text-align: center; margin-bottom: 8px; color: var(--text); }
         .modal-msg { font-size: 13px; color: var(--text-muted); text-align: center; margin-bottom: 24px; line-height: 1.6; }
@@ -893,276 +833,119 @@
 
         /* ── TEACHER CARDS ── */
         .teacher-card {
-            background: var(--bg-elevated);
-            border: 1.5px solid var(--border);
-            border-radius: var(--radius-sm);
-            padding: 16px;
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            margin-bottom: 10px;
-            transition: all 0.2s;
+            background: var(--bg-elevated); border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm); padding: 16px;
+            display: flex; align-items: center; gap: 14px; margin-bottom: 10px; transition: all 0.2s;
         }
-
         .teacher-card:hover { border-color: var(--red-mid); box-shadow: var(--shadow); }
-
         .teacher-avatar {
             width: 46px; height: 46px;
             background: linear-gradient(135deg, var(--red), var(--red-dark));
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-family: var(--font-display);
-            font-weight: 800;
-            font-size: 20px;
-            color: white;
-            flex-shrink: 0;
-            box-shadow: 0 2px 8px rgba(220,38,38,0.25);
+            border-radius: 12px; display: flex; align-items: center; justify-content: center;
+            font-family: var(--font-display); font-weight: 800; font-size: 20px; color: white;
+            flex-shrink: 0; box-shadow: 0 2px 8px rgba(220,38,38,0.25);
         }
-
         .teacher-info { flex: 1; min-width: 0; }
         .teacher-name { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: var(--text); }
         .teacher-subject { font-size: 12px; color: var(--red); font-weight: 600; margin-top: 2px; }
         .teacher-pin { font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); margin-top: 3px; }
 
         /* ── PIN LOGIN OVERLAY ── */
-        #teacher-login-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.55);
-            z-index: 10000;
-            backdrop-filter: blur(8px);
-        }
-
+        #teacher-login-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 10000; backdrop-filter: blur(8px); }
         #teacher-login-overlay.visible { display: flex; align-items: center; justify-content: center; }
-
         .login-box {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 24px;
-            padding: 40px 36px;
-            max-width: 400px;
-            width: calc(100% - 32px);
-            text-align: center;
-            box-shadow: var(--shadow-md);
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: 24px;
+            padding: 40px 36px; max-width: 400px; width: calc(100% - 32px);
+            text-align: center; box-shadow: var(--shadow-md);
             animation: popIn 0.3s cubic-bezier(0.68,-0.55,0.265,1.55);
         }
-
         .login-logo { font-size: 44px; margin-bottom: 14px; }
         .login-title { font-family: var(--font-display); font-size: 26px; font-weight: 800; margin-bottom: 6px; color: var(--text); }
         .login-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; }
-
-        .pin-display {
-            display: flex;
-            gap: 10px;
-            justify-content: center;
-            margin-bottom: 20px;
-        }
-
-        .pin-dot {
-            width: 16px; height: 16px;
-            border-radius: 50%;
-            background: var(--bg-elevated);
-            border: 2px solid var(--border-mid);
-            transition: all 0.2s;
-        }
-
-        .pin-dot.filled {
-            background: var(--red);
-            border-color: var(--red);
-            box-shadow: 0 0 10px rgba(220,38,38,0.4);
-        }
-
-        .pin-pad {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-            max-width: 240px;
-            margin: 0 auto 16px;
-        }
-
+        .pin-display { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
+        .pin-dot { width: 16px; height: 16px; border-radius: 50%; background: var(--bg-elevated); border: 2px solid var(--border-mid); transition: all 0.2s; }
+        .pin-dot.filled { background: var(--red); border-color: var(--red); box-shadow: 0 0 10px rgba(220,38,38,0.4); }
+        .pin-pad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; max-width: 240px; margin: 0 auto 16px; }
         .pin-key {
-            padding: 16px;
-            background: var(--bg-elevated);
-            border: 1.5px solid var(--border);
-            border-radius: var(--radius-sm);
-            font-family: var(--font-display);
-            font-size: 20px;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.15s;
-            color: var(--text);
-            box-shadow: none;
-            margin-top: 0;
+            padding: 16px; background: var(--bg-elevated); border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm); font-family: var(--font-display); font-size: 20px;
+            font-weight: 700; cursor: pointer; transition: all 0.15s; color: var(--text);
+            box-shadow: none; margin-top: 0;
         }
-
         .pin-key:hover { background: var(--bg-hover); border-color: var(--border-mid); transform: scale(1.04); }
         .pin-key:active { transform: scale(0.96); }
         .pin-key.clear { color: var(--red); font-size: 14px; }
         .pin-key.enter { background: var(--red); border-color: var(--red-dark); color: white; box-shadow: var(--shadow-red); }
         .pin-key.enter:hover { background: var(--red-dark); transform: scale(1.04); }
-
         .pin-error { color: var(--red); font-size: 13px; font-weight: 600; margin-top: 8px; min-height: 20px; }
 
         /* ── BADGES ── */
-        .badge {
-            display: inline-block;
-            padding: 2px 9px;
-            border-radius: 8px;
-            font-family: var(--font-mono);
-            font-size: 11px;
-            font-weight: 500;
-        }
-
+        .badge { display: inline-block; padding: 2px 9px; border-radius: 8px; font-family: var(--font-mono); font-size: 11px; font-weight: 500; }
         .badge-in { background: #dcfce7; color: #15803d; }
         .badge-out { background: var(--red-soft); color: var(--red); }
         .badge-section { background: var(--bg-elevated); color: var(--text-muted); border: 1px solid var(--border); }
+        .badge-subject { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
 
         /* ── MISC ── */
         .empty-state { text-align: center; padding: 48px 20px; color: var(--text-dim); }
         .empty-state .empty-icon { font-size: 48px; margin-bottom: 12px; opacity: 0.35; }
         .empty-state p { font-size: 14px; }
-
-        .success-msg {
-            background: #f0fdf4;
-            border: 1px solid #bbf7d0;
-            color: #15803d;
-            padding: 10px 14px;
-            border-radius: var(--radius-sm);
-            font-size: 13px;
-            font-weight: 600;
-            margin-top: 12px;
-            display: none;
-        }
-
+        .success-msg { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 600; margin-top: 12px; display: none; }
         .flex-row { display: flex; gap: 10px; flex-wrap: wrap; }
         .mt-12 { margin-top: 12px; }
         #camera-status { text-align: center; font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); }
 
         /* ── PIN DELETE MODAL ── */
         #pin-delete-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.55);
-            z-index: 10002;
-            backdrop-filter: blur(8px);
-            align-items: center;
-            justify-content: center;
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+            z-index: 10002; backdrop-filter: blur(8px); align-items: center; justify-content: center;
         }
         #pin-delete-overlay.visible { display: flex; }
-
         .pin-delete-box {
-            background: var(--bg-card);
-            border: 1.5px solid var(--border-mid);
-            border-radius: 24px;
-            padding: 36px;
-            max-width: 380px;
-            width: calc(100% - 32px);
-            text-align: center;
-            box-shadow: var(--shadow-md);
-            animation: popIn 0.3s cubic-bezier(0.68,-0.55,0.265,1.55);
+            background: var(--bg-card); border: 1.5px solid var(--border-mid); border-radius: 24px;
+            padding: 36px; max-width: 380px; width: calc(100% - 32px); text-align: center;
+            box-shadow: var(--shadow-md); animation: popIn 0.3s cubic-bezier(0.68,-0.55,0.265,1.55);
         }
-
         .pin-delete-title { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--text); margin-bottom: 6px; }
         .pin-delete-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
         .pin-delete-teacher { font-family: var(--font-display); font-weight: 700; color: var(--red); font-size: 15px; margin-bottom: 20px; }
 
-        /* ── ADMIN PIN OVERLAY (reset / change PIN / change teacher PIN) ── */
+        /* ── ADMIN PIN OVERLAY ── */
         #admin-pin-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.6);
-            z-index: 10003;
-            backdrop-filter: blur(10px);
-            align-items: center;
-            justify-content: center;
+            display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+            z-index: 10003; backdrop-filter: blur(10px); align-items: center; justify-content: center;
         }
         #admin-pin-overlay.visible { display: flex; }
-
         .admin-pin-box {
-            background: var(--bg-card);
-            border: 2px solid var(--border-mid);
-            border-radius: 24px;
-            padding: 36px 32px;
-            max-width: 420px;
-            width: calc(100% - 32px);
-            text-align: center;
-            box-shadow: var(--shadow-md);
-            animation: popIn 0.3s cubic-bezier(0.68,-0.55,0.265,1.55);
+            background: var(--bg-card); border: 2px solid var(--border-mid); border-radius: 24px;
+            padding: 36px 32px; max-width: 420px; width: calc(100% - 32px); text-align: center;
+            box-shadow: var(--shadow-md); animation: popIn 0.3s cubic-bezier(0.68,-0.55,0.265,1.55);
         }
-
-        .admin-pin-icon  { font-size: 46px; margin-bottom: 10px; }
+        .admin-pin-icon { font-size: 46px; margin-bottom: 10px; }
         .admin-pin-title { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: var(--text); margin-bottom: 4px; }
-        .admin-pin-sub   { font-size: 13px; color: var(--text-muted); margin-bottom: 18px; line-height: 1.5; }
-
+        .admin-pin-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 18px; line-height: 1.5; }
         .change-pin-row { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
         .change-pin-row input {
-            padding: 11px 14px;
-            background: var(--bg-elevated);
-            border: 1.5px solid var(--border);
-            border-radius: var(--radius-sm);
-            color: var(--text);
-            font-size: 14px;
-            font-family: var(--font-mono);
-            letter-spacing: 4px;
-            text-align: center;
-            width: 100%;
-            box-sizing: border-box;
+            padding: 11px 14px; background: var(--bg-elevated); border: 1.5px solid var(--border);
+            border-radius: var(--radius-sm); color: var(--text); font-size: 14px;
+            font-family: var(--font-mono); letter-spacing: 4px; text-align: center; width: 100%; box-sizing: border-box;
         }
         .change-pin-row input:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 3px var(--red-glow); }
         .change-pin-row input::placeholder { letter-spacing: 0; font-family: var(--font-body); font-size: 13px; color: var(--text-dim); }
-
-        .admin-tabs {
-            display: flex; gap: 4px;
-            background: var(--bg-elevated);
-            border-radius: var(--radius-sm);
-            padding: 4px;
-            margin-bottom: 16px;
-        }
-        .admin-tab {
-            flex: 1; padding: 8px 6px;
-            border: none; background: transparent;
-            color: var(--text-muted); border-radius: 7px;
-            font-size: 11px; font-weight: 700; cursor: pointer;
-            transition: all 0.2s; box-shadow: none; margin-top: 0;
-            font-family: var(--font-body);
-        }
+        .admin-tabs { display: flex; gap: 4px; background: var(--bg-elevated); border-radius: var(--radius-sm); padding: 4px; margin-bottom: 16px; }
+        .admin-tab { flex: 1; padding: 8px 6px; border: none; background: transparent; color: var(--text-muted); border-radius: 7px; font-size: 11px; font-weight: 700; cursor: pointer; transition: all 0.2s; box-shadow: none; margin-top: 0; font-family: var(--font-body); }
         .admin-tab.active { background: var(--bg-card); color: var(--text); box-shadow: var(--shadow); }
         .admin-tab-content { display: none; }
         .admin-tab-content.active { display: block; }
-
         .admin-scrollable { max-height: 280px; overflow-y: auto; padding-right: 2px; }
-
-        .teacher-change-item {
-            background: var(--bg-elevated); border: 1.5px solid var(--border);
-            border-radius: var(--radius-sm); padding: 14px; margin-bottom: 10px; text-align: left;
-        }
+        .teacher-change-item { background: var(--bg-elevated); border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 14px; margin-bottom: 10px; text-align: left; }
         .teacher-change-name { font-family: var(--font-display); font-weight: 700; font-size: 13px; color: var(--text); }
         .teacher-change-subject { font-size: 11px; color: var(--red); font-weight: 600; margin-bottom: 8px; margin-top: 2px; }
         .teacher-pin-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-
-        .btn-change-pin {
-            padding: 5px 12px; background: transparent;
-            border: 1.5px solid var(--border-mid); color: var(--text-muted);
-            border-radius: 7px; font-size: 11px; font-weight: 600; cursor: pointer;
-            transition: all 0.2s; box-shadow: none; margin-top: 0; font-family: var(--font-body);
-        }
+        .btn-change-pin { padding: 5px 12px; background: transparent; border: 1.5px solid var(--border-mid); color: var(--text-muted); border-radius: 7px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: none; margin-top: 0; font-family: var(--font-body); }
         .btn-change-pin:hover { border-color: var(--red-mid); color: var(--text); background: var(--red-pale); box-shadow: none; transform: none; }
-
-        .btn-delete-force {
-            padding: 5px 12px; background: #fef2f2;
-            border: 1.5px solid rgba(220,38,38,0.3); color: var(--red);
-            border-radius: 7px; font-size: 11px; font-weight: 600; cursor: pointer;
-            transition: all 0.2s; box-shadow: none; margin-top: 0; font-family: var(--font-body);
-        }
+        .btn-delete-force { padding: 5px 12px; background: #fef2f2; border: 1.5px solid rgba(220,38,38,0.3); color: var(--red); border-radius: 7px; font-size: 11px; font-weight: 600; cursor: pointer; transition: all 0.2s; box-shadow: none; margin-top: 0; font-family: var(--font-body); }
         .btn-delete-force:hover { background: var(--red); color: white; box-shadow: var(--shadow-red); transform: none; }
-
-        .inline-pin-form { margin-top: 10px; display: none; }
-        .inline-pin-form.visible { display: block; }
 
         /* ── SCROLLBAR ── */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
@@ -1177,8 +960,8 @@
             .nav-tab { font-size: 12px; padding: 8px 10px; min-width: 80px; }
             .teacher-dropdown-row { flex-direction: column; }
             .teacher-dropdown, .btn-select-teacher { width: 100%; }
+            .mode-toggle-row { gap: 6px; }
         }
-
         @media (max-width: 420px) {
             .stats-grid { grid-template-columns: 1fr; }
             .live-clock { display: none; }
@@ -1188,7 +971,7 @@
 <body>
 
 <div class="header">
-        <img src="image/arklogo.png" alt="Company Logo" class="logo"> 
+    <img src="image/arklogo.png" alt="ARK Logo" class="logo">
     <div class="header-text">
         <div class="header-title">ARK Technological Institute Education System Inc.</div>
         <div class="header-sub">J-Seven Bldg. Magallanes Cor. Granja St. Brgy. 7 Lucena City</div>
@@ -1198,7 +981,7 @@
 
 <div class="context-bar" id="context-bar">
     <div class="context-dot"></div>
-    <span style="font-size:13px; color:var(--text-sub);">Logged in as <span class="context-name" id="ctx-name">—</span></span>
+    <span style="font-size:13px; color:var(--text-sub);">Active Session: <span class="context-name" id="ctx-name">—</span></span>
     <span class="tag-subject" id="ctx-subject">—</span>
     <button class="context-logout" onclick="logoutTeacher()">Log Out</button>
 </div>
@@ -1210,7 +993,7 @@
     <button class="nav-tab" onclick="switchTab('teachers',this)">👩‍🏫 Teachers</button>
 </div>
 
-<!-- DASHBOARD -->
+<!-- ══════════ DASHBOARD ══════════ -->
 <div id="dashboard-tab" class="tab-content active">
     <div class="stats-grid">
         <div class="stat-card"><div class="stat-icon">👥</div><div class="stat-value" id="stat-total">0</div><div class="stat-label">Students Today</div></div>
@@ -1218,19 +1001,16 @@
         <div class="stat-card"><div class="stat-icon">🏫</div><div class="stat-value" id="stat-sections">0</div><div class="stat-label">Active Sections</div></div>
         <div class="stat-card"><div class="stat-icon">📈</div><div class="stat-value" id="stat-scans">0</div><div class="stat-label">Total Scans Today</div></div>
     </div>
-
     <div class="card">
         <div class="card-title"><span>🏫</span> Section Attendance Status — Today</div>
         <div id="section-status-grid" class="section-status-grid">
             <div class="empty-state"><div class="empty-icon">📊</div><p>No attendance data yet</p></div>
         </div>
     </div>
-
     <div class="charts-grid">
         <div class="chart-card"><div class="chart-title">📈 Hourly Activity</div><canvas id="hourlyChart"></canvas></div>
         <div class="chart-card"><div class="chart-title">📅 Weekly Attendance</div><canvas id="weeklyChart"></canvas></div>
     </div>
-
     <div class="card">
         <div class="card-title"><span>🕐</span> Recent Activity</div>
         <div class="activity-list" id="activity-list">
@@ -1239,7 +1019,7 @@
     </div>
 </div>
 
-<!-- LOGS -->
+<!-- ══════════ LOGS ══════════ -->
 <div id="logs-tab" class="tab-content">
     <div class="card">
         <div class="card-title"><span>📋</span> Attendance Logs</div>
@@ -1257,12 +1037,12 @@
         </div>
         <div class="search-wrap">
             <span class="search-icon">🔍</span>
-            <input type="text" id="search-input" placeholder="Search by name, ID, section…" oninput="handleSearch()">
+            <input type="text" id="search-input" placeholder="Search by name, ID, section, subject…" oninput="handleSearch()">
             <button class="search-clear" id="clear-search" onclick="clearSearch()">✕</button>
         </div>
         <div class="table-wrapper">
             <table>
-                <thead><tr><th>Student ID</th><th>Name</th><th>Section</th><th>Time In</th><th>Time Out</th><th>Date</th><th>Actions</th></tr></thead>
+                <thead><tr><th>Student ID</th><th>Name</th><th>Section</th><th>Subject</th><th>Time In</th><th>Time Out</th><th>Date</th><th>Actions</th></tr></thead>
                 <tbody id="report-body"></tbody>
             </table>
         </div>
@@ -1287,20 +1067,62 @@
     </div>
 </div>
 
-<!-- SCANNER -->
+<!-- ══════════ SCANNER ══════════ -->
 <div id="scanner-tab" class="tab-content">
-    <div class="card" style="max-width:560px;margin:0 auto;">
+    <div class="card" style="max-width:580px;margin:0 auto;">
         <div class="card-title"><span>📷</span> QR Code Scanner</div>
 
-        <div class="teacher-select-wrap">
-            <span class="teacher-select-label">👩‍🏫 Select Teacher / Subject</span>
-            <div class="teacher-dropdown-row">
-                <select id="scanner-teacher-dropdown" class="teacher-dropdown">
-                    <option value="">— No Teacher (General Attendance) —</option>
-                </select>
-                <button class="btn-select-teacher" onclick="confirmSelectTeacher()">🔐 Log In</button>
+        <!-- HOW IT WORKS -->
+        <div class="how-it-works">
+            <div class="how-title">💡 How Per-Subject Scanning Works</div>
+            <div class="how-steps">
+                <div class="how-step"><div class="how-step-num">1</div><span>Select <strong>General Attendance</strong> mode — students scan once for arrival/departure (school-wide).</span></div>
+                <div class="how-step"><div class="how-step-num">2</div><span>Switch to <strong>Subject / Teacher</strong> mode, log in as a teacher, then scan — students can scan independently for each subject session.</span></div>
+                <div class="how-step"><div class="how-step-num">3</div><span>Each student gets a separate Time In / Time Out record per subject. They can attend <strong>multiple subjects in one day</strong>.</span></div>
             </div>
-            <div class="teacher-hint" id="teacher-hint">Select a teacher then click Log In to tag attendance to a subject.</div>
+        </div>
+
+        <!-- MODE SELECTOR -->
+        <div class="session-mode-card">
+            <div class="session-mode-label">📡 Scanning Mode</div>
+            <div class="mode-toggle-row">
+                <button class="mode-btn active" id="mode-btn-general" onclick="setMode('general')">
+                    <span class="mode-icon">🏫</span>
+                    <span class="mode-name">General Attendance</span>
+                    <span class="mode-desc">School-wide arrival/departure</span>
+                </button>
+                <button class="mode-btn" id="mode-btn-subject" onclick="setMode('subject')">
+                    <span class="mode-icon">📚</span>
+                    <span class="mode-name">Subject / Teacher</span>
+                    <span class="mode-desc">Per-class attendance</span>
+                </button>
+            </div>
+
+            <!-- GENERAL MODE INFO -->
+            <div class="general-mode-bar visible" id="general-mode-bar">
+                <div class="gen-dot"></div>
+                <div style="flex:1;">
+                    <div style="font-family:var(--font-display);font-weight:700;font-size:14px;color:#1d4ed8;">General Attendance Mode</div>
+                    <div style="font-size:12px;color:#2563eb;margin-top:2px;">Scans are recorded without a subject/teacher tag.</div>
+                </div>
+            </div>
+
+            <!-- SUBJECT MODE — TEACHER SELECT -->
+            <div class="teacher-select-section" id="teacher-select-section">
+                <div style="font-size:12px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.8px;font-family:var(--font-mono);margin-bottom:10px;">Select Teacher / Subject</div>
+                <div class="teacher-dropdown-row">
+                    <select id="scanner-teacher-dropdown" class="teacher-dropdown">
+                        <option value="">— Choose a teacher —</option>
+                    </select>
+                    <button class="btn-select-teacher" onclick="confirmSelectTeacher()">🔐 Log In</button>
+                </div>
+                <div class="teacher-hint" id="teacher-hint">Select a teacher, then click Log In to begin subject-tagged scanning.</div>
+            </div>
+        </div>
+
+        <!-- ACTIVE SESSION BARS -->
+        <div class="general-mode-bar" id="general-active-bar" style="display:none;">
+            <!-- shown when actually scanning in general mode -->
         </div>
 
         <div class="scanner-active-bar" id="scanner-active-bar">
@@ -1309,21 +1131,23 @@
                 <div class="scan-active-name" id="scan-teacher-name">—</div>
                 <div class="scan-active-subject" id="scan-teacher-subject">—</div>
             </div>
-            <button class="btn-ghost btn-sm" onclick="clearScannerTeacher()" style="margin-top:0;">✕ Clear</button>
+            <button class="btn-ghost btn-sm" onclick="clearScannerTeacher()" style="margin-top:0;">✕ Change</button>
         </div>
 
+        <!-- VOICE -->
         <div class="voice-bar">
             <label>🔊 Voice:</label>
             <select id="voice-select"></select>
             <button class="btn-ghost btn-sm" onclick="testVoice()" style="margin-top:0;">Test</button>
         </div>
 
+        <!-- QR READER -->
         <div id="qr-reader"><div class="qr-overlay"></div></div>
         <p id="camera-status"></p>
     </div>
 </div>
 
-<!-- TEACHERS -->
+<!-- ══════════ TEACHERS ══════════ -->
 <div id="teachers-tab" class="tab-content">
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;">
         <div class="card">
@@ -1370,7 +1194,7 @@
     </div>
 </div>
 
-<!-- PIN DELETE OVERLAY — Teacher must enter their own PIN to confirm deletion -->
+<!-- PIN DELETE OVERLAY -->
 <div id="pin-delete-overlay">
     <div class="pin-delete-box">
         <div style="font-size:44px;margin-bottom:12px;">🗑️</div>
@@ -1406,10 +1230,9 @@
     </div>
 </div>
 
-<!-- ADMIN PIN GATE — Enter admin PIN before Reset or Management actions -->
+<!-- ADMIN PIN GATE -->
 <div id="admin-pin-overlay">
     <div class="admin-pin-box">
-        <!-- Step 1: Enter admin PIN -->
         <div id="admin-gate-step">
             <div class="admin-pin-icon">🔒</div>
             <div class="admin-pin-title" id="admin-gate-title">Admin Access</div>
@@ -1430,28 +1253,21 @@
             <div class="pin-error" id="admin-pin-error"></div>
             <button class="btn-ghost btn-sm" onclick="closeAdminPinOverlay()" style="margin:8px auto 0;display:block;">Cancel</button>
         </div>
-
-        <!-- Step 2: Manage panel (shown after PIN verified) -->
         <div id="admin-manage-step" style="display:none;">
             <div class="admin-pin-icon">⚙️</div>
             <div class="admin-pin-title">Admin Panel</div>
             <div class="admin-pin-sub" style="margin-bottom:12px;">Manage system settings &amp; teacher accounts.</div>
-
             <div class="admin-tabs">
                 <button class="admin-tab active" onclick="switchAdminTab('reset-tab',this)">🗑️ Reset</button>
                 <button class="admin-tab" onclick="switchAdminTab('change-pin-tab',this)">🔑 Admin PIN</button>
                 <button class="admin-tab" onclick="switchAdminTab('teachers-tab-admin',this)">👩‍🏫 Teachers</button>
             </div>
-
-            <!-- Reset Tab -->
             <div id="reset-tab" class="admin-tab-content active">
                 <div style="background:var(--red-pale);border:1px solid var(--red-mid);border-radius:var(--radius-sm);padding:14px;margin-bottom:14px;font-size:13px;color:var(--red-dark);line-height:1.5;">
-                    ⚠️ This will permanently delete <strong>all local attendance records</strong>. Firebase records require manual deletion.
+                    ⚠️ This will permanently delete <strong>all local AND Firebase attendance records</strong>. This action cannot be undone.
                 </div>
                 <button class="btn-danger" onclick="executeResetLogs()" style="width:100%;margin-top:0;">🗑️ Confirm Reset All Logs</button>
             </div>
-
-            <!-- Change Admin PIN Tab -->
             <div id="change-pin-tab" class="admin-tab-content">
                 <div style="font-size:13px;color:var(--text-muted);margin-bottom:14px;line-height:1.5;">Set a new admin PIN. Must be 4–6 digits.</div>
                 <div class="change-pin-row">
@@ -1461,19 +1277,15 @@
                 <button onclick="saveNewAdminPin()" style="width:100%;margin-top:4px;">💾 Save New PIN</button>
                 <div class="pin-error" id="change-admin-pin-error" style="margin-top:8px;min-height:18px;"></div>
             </div>
-
-            <!-- Teachers Admin Tab -->
             <div id="teachers-tab-admin" class="admin-tab-content">
                 <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;font-family:var(--font-mono);">Force-delete or change any teacher's PIN without knowing their PIN.</div>
-                <div class="admin-scrollable" id="admin-teacher-list">
-                    <div class="empty-state" style="padding:24px 10px;"><div class="empty-icon" style="font-size:32px;">👩‍🏫</div><p>No teachers registered</p></div>
-                </div>
+                <div class="admin-scrollable" id="admin-teacher-list"></div>
             </div>
         </div>
     </div>
 </div>
 
-<!-- TEACHER CHANGE-PIN INLINE MODAL (inside admin panel) -->
+<!-- TEACHER CHANGE-PIN MODAL -->
 <div id="teacher-new-pin-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10005;backdrop-filter:blur(8px);align-items:center;justify-content:center;">
     <div style="background:var(--bg-card);border:1.5px solid var(--border-mid);border-radius:20px;padding:32px;max-width:360px;width:calc(100% - 32px);text-align:center;box-shadow:var(--shadow-md);animation:popIn 0.3s cubic-bezier(0.68,-0.55,0.265,1.55);">
         <div style="font-size:40px;margin-bottom:10px;">🔑</div>
@@ -1490,34 +1302,34 @@
 </div>
 
 <script>
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // STATE
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 let allPaired = [], filteredPaired = [];
 let attPage = 1, attPageSize = 20;
 let currentSection = null, currentSubject = null, searchTerm = '';
 let loggedInTeacher  = null;
 let scannerTeacher   = null;
+let scannerMode      = 'general'; // 'general' | 'subject'
 let pendingLoginTeacher = null, pendingLoginCallback = null, pinBuffer = '';
 let hourlyChart, weeklyChart;
 
-// Delete PIN state
 let deletePinBuffer = '';
 let pendingDeleteTeacherId = null;
 let pendingDeleteTeacherPin = null;
 
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // CLOCK
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 function updateClock() {
     document.getElementById('live-clock').textContent =
         new Date().toLocaleTimeString('en-US',{hour12:true,hour:'2-digit',minute:'2-digit',second:'2-digit'});
 }
 setInterval(updateClock, 1000); updateClock();
 
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // TABS
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 function switchTab(name, btn) {
     document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.nav-tab').forEach(b => b.classList.remove('active'));
@@ -1532,9 +1344,39 @@ function switchTab(name, btn) {
     if (name === 'teachers') renderTeacherList();
 }
 
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// SCANNER MODE TOGGLE
+// ═══════════════════════════════════════════════════════════════
+function setMode(mode) {
+    scannerMode = mode;
+    document.getElementById('mode-btn-general').classList.toggle('active', mode === 'general');
+    document.getElementById('mode-btn-subject').classList.toggle('active', mode === 'subject');
+
+    const generalBar      = document.getElementById('general-mode-bar');
+    const teacherSection  = document.getElementById('teacher-select-section');
+    const scannerActiveBar = document.getElementById('scanner-active-bar');
+
+    if (mode === 'general') {
+        generalBar.classList.add('visible');
+        teacherSection.classList.remove('visible');
+        // Keep scanner teacher cleared when switching to general
+        scannerActiveBar.classList.remove('visible');
+        document.getElementById('context-bar').classList.remove('visible');
+        scannerTeacher   = null;
+        loggedInTeacher  = null;
+    } else {
+        generalBar.classList.remove('visible');
+        teacherSection.classList.add('visible');
+        // Restore active bar if teacher already logged in
+        if (scannerTeacher) {
+            scannerActiveBar.classList.add('visible');
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════
 // TEACHERS
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 function getTeachers() {
     const local  = JSON.parse(localStorage.getItem('teachers') || '[]');
     const remote = window.remoteTeachers || [];
@@ -1587,83 +1429,51 @@ function renderTeacherList() {
 function deleteTeacher(id) {
     const teacher = getTeachers().find(t => t.id === id);
     if (!teacher) return;
-
-    // Store delete target
     pendingDeleteTeacherId  = id;
     pendingDeleteTeacherPin = teacher.pin;
     deletePinBuffer = '';
-
-    // Update modal labels
     document.getElementById('delete-teacher-name-label').textContent = teacher.name + "'s";
     document.getElementById('delete-target-label').textContent = teacher.name + ' — ' + teacher.subject;
     document.getElementById('delete-pin-error').textContent = '';
     updateDeletePinDisplay();
-
-    // Show PIN delete overlay
     document.getElementById('pin-delete-overlay').classList.add('visible');
 }
-
 function closeDeletePinModal() {
     document.getElementById('pin-delete-overlay').classList.remove('visible');
-    pendingDeleteTeacherId  = null;
-    pendingDeleteTeacherPin = null;
-    deletePinBuffer = '';
+    pendingDeleteTeacherId = null; pendingDeleteTeacherPin = null; deletePinBuffer = '';
     updateDeletePinDisplay();
 }
-
-function deletePinKey(k) {
-    if (deletePinBuffer.length >= 6) return;
-    deletePinBuffer += k;
-    updateDeletePinDisplay();
-    document.getElementById('delete-pin-error').textContent = '';
-}
-
-function deletePinClear() {
-    deletePinBuffer = deletePinBuffer.slice(0, -1);
-    updateDeletePinDisplay();
-}
-
+function deletePinKey(k) { if(deletePinBuffer.length>=6)return; deletePinBuffer+=k; updateDeletePinDisplay(); document.getElementById('delete-pin-error').textContent=''; }
+function deletePinClear() { deletePinBuffer=deletePinBuffer.slice(0,-1); updateDeletePinDisplay(); }
 async function deletePinEnter() {
-    if (!pendingDeleteTeacherId || !pendingDeleteTeacherPin) return;
-
+    if (!pendingDeleteTeacherId||!pendingDeleteTeacherPin) return;
     if (deletePinBuffer === pendingDeleteTeacherPin) {
-        // PIN matches — proceed with deletion
         const id = pendingDeleteTeacherId;
         closeDeletePinModal();
-
         let local = JSON.parse(localStorage.getItem('teachers')||'[]');
-        local = local.filter(t => t.id !== id);
+        local = local.filter(t=>t.id!==id);
         localStorage.setItem('teachers', JSON.stringify(local));
-
-        const docId = window.teacherDocIds ? window.teacherDocIds[id] : null;
-        if (docId && window.deleteTeacherFromFirebase) await window.deleteTeacherFromFirebase(docId);
-
-        if (scannerTeacher && scannerTeacher.id === id) clearScannerTeacher();
-
-        renderTeacherList();
-        renderScannerDropdown();
-        renderFilters();
+        const docId = window.teacherDocIds?window.teacherDocIds[id]:null;
+        if (docId&&window.deleteTeacherFromFirebase) await window.deleteTeacherFromFirebase(docId);
+        if (scannerTeacher&&scannerTeacher.id===id) clearScannerTeacher();
+        renderTeacherList(); renderScannerDropdown(); renderFilters();
     } else {
-        document.getElementById('delete-pin-error').textContent = '❌ Incorrect PIN. Try again.';
-        deletePinBuffer = '';
-        updateDeletePinDisplay();
+        document.getElementById('delete-pin-error').textContent='❌ Incorrect PIN. Try again.';
+        deletePinBuffer=''; updateDeletePinDisplay();
     }
 }
-
 function updateDeletePinDisplay() {
-    for (let i = 0; i < 6; i++) {
-        document.getElementById('dpd'+i).classList.toggle('filled', i < deletePinBuffer.length);
-    }
+    for(let i=0;i<6;i++) document.getElementById('dpd'+i).classList.toggle('filled',i<deletePinBuffer.length);
 }
 
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // SCANNER TEACHER DROPDOWN
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 function renderScannerDropdown() {
     const teachers = getTeachers();
     const sel = document.getElementById('scanner-teacher-dropdown');
     const currentVal = sel.value;
-    sel.innerHTML = '<option value="">— No Teacher (General Attendance) —</option>';
+    sel.innerHTML = '<option value="">— Choose a teacher —</option>';
     teachers.forEach(t => {
         const opt = document.createElement('option');
         opt.value = t.id;
@@ -1680,32 +1490,28 @@ function renderScannerDropdown() {
 function confirmSelectTeacher() {
     const sel = document.getElementById('scanner-teacher-dropdown');
     const selectedId = sel.value;
-
-    if (!selectedId) { clearScannerTeacher(); return; }
+    if (!selectedId) { alert('Please select a teacher first.'); return; }
 
     const teacher = getTeachers().find(t => t.id === selectedId);
     if (!teacher) { alert('Teacher not found.'); return; }
 
     if (scannerTeacher && scannerTeacher.id === selectedId) {
-        alert(`${teacher.name} is already logged in.`);
-        return;
+        showToast(`${teacher.name} is already logged in.`); return;
     }
 
     openLoginModal(teacher, (t) => {
         scannerTeacher = t;
-
         document.getElementById('scanner-active-bar').classList.add('visible');
         document.getElementById('scan-teacher-name').textContent    = t.name;
         document.getElementById('scan-teacher-subject').textContent = '📚 ' + t.subject;
-
         const hint = document.getElementById('teacher-hint');
-        hint.textContent = `✓ Logged in — scans tagged to "${t.subject}"`;
+        hint.textContent = `✓ Active: "${t.subject}" — students can now scan for this subject.`;
         hint.className   = 'teacher-hint has-teacher';
-
         loggedInTeacher = t;
         document.getElementById('ctx-name').textContent    = t.name;
         document.getElementById('ctx-subject').textContent = t.subject;
         document.getElementById('context-bar').classList.add('visible');
+        showToast(`✅ ${t.name} logged in. Ready to scan for ${t.subject}.`);
     });
 }
 
@@ -1715,16 +1521,15 @@ function clearScannerTeacher() {
     document.getElementById('scanner-teacher-dropdown').value = '';
     document.getElementById('scanner-active-bar').classList.remove('visible');
     const hint = document.getElementById('teacher-hint');
-    hint.textContent = 'Select a teacher then click Log In to tag attendance to a subject.';
+    hint.textContent = 'Select a teacher, then click Log In to begin subject-tagged scanning.';
     hint.className   = 'teacher-hint';
     document.getElementById('context-bar').classList.remove('visible');
 }
+function logoutTeacher() { clearScannerTeacher(); setMode('general'); }
 
-function logoutTeacher() { clearScannerTeacher(); }
-
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // PIN PAD (Login)
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 function openLoginModal(teacher, callback) {
     pendingLoginTeacher  = teacher;
     pendingLoginCallback = callback;
@@ -1734,37 +1539,63 @@ function openLoginModal(teacher, callback) {
     updatePinDisplay();
     document.getElementById('teacher-login-overlay').classList.add('visible');
 }
-
 function closeLoginModal() {
     document.getElementById('teacher-login-overlay').classList.remove('visible');
-    pendingLoginTeacher = null; pendingLoginCallback = null; pinBuffer = '';
-    updatePinDisplay();
+    pendingLoginTeacher = null; pendingLoginCallback = null; pinBuffer = ''; updatePinDisplay();
 }
-
 function pinKey(k)  { if(pinBuffer.length>=6)return; pinBuffer+=k; updatePinDisplay(); document.getElementById('pin-error').textContent=''; }
 function pinClear() { pinBuffer=pinBuffer.slice(0,-1); updatePinDisplay(); }
 function pinEnter() {
     if (!pendingLoginTeacher) return;
     if (pinBuffer === pendingLoginTeacher.pin) {
-        const cb = pendingLoginCallback;
-        const t  = pendingLoginTeacher;
+        const cb=pendingLoginCallback, t=pendingLoginTeacher;
         closeLoginModal();
         if (cb) cb(t);
     } else {
-        document.getElementById('pin-error').textContent = '❌ Incorrect PIN. Try again.';
+        document.getElementById('pin-error').textContent='❌ Incorrect PIN. Try again.';
         pinBuffer=''; updatePinDisplay();
     }
 }
 function updatePinDisplay() {
-    for(let i=0;i<6;i++) document.getElementById('pd'+i).classList.toggle('filled', i<pinBuffer.length);
+    for(let i=0;i<6;i++) document.getElementById('pd'+i).classList.toggle('filled',i<pinBuffer.length);
 }
 
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// ██████████████████████████████████████████████████████████████
+//  CORE LOGIC: PER-SUBJECT ACTION TYPE
+//
+//  KEY CHANGE: getActionType now scopes Time In/Out tracking
+//  by BOTH studentID AND teacherID (or 'general').
+//  This allows a student to have independent sessions per subject.
+// ██████████████████████████████████████████████████████████████
+// ═══════════════════════════════════════════════════════════════
+
+function getActionType(studentId, teacherContext) {
+    const today    = getTodayDate();
+    const logs     = getCombinedLogs();
+    const scopeKey = teacherContext || 'general'; // 'general' or teacherID
+
+    // Filter logs for this student, today, in this specific scope (subject/general)
+    const scopedLogs = logs.filter(e =>
+        e.studentID === studentId &&
+        e.date === today &&
+        (e.teacherID || 'general') === scopeKey
+    );
+
+    if (!scopedLogs.length) return 'Time In';
+
+    // Sort by time and look at the last action for this scope
+    scopedLogs.sort((a,b) => new Date(a.time) - new Date(b.time));
+    const last = scopedLogs[scopedLogs.length - 1];
+    return (!last || !last.action) ? 'Time In' : (last.action === 'Time Out' ? 'Time In' : 'Time Out');
+}
+
+// ═══════════════════════════════════════════════════════════════
 // SCANNER / QR
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 const html5QrCode = new Html5Qrcode("qr-reader");
 let scanning = false, lastScanAt = 0;
-const SCAN_COOLDOWN = 7000;
+const SCAN_COOLDOWN = 10000; // 10 second delay to prevent accidental/double scans
 const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbzz84gbAmsUSMnvxAqYHSc1iAvL1XscsJPIX3QTX8vH234VzxlMAfDORNOvq1Hoe8w1qw/exec";
 
 function startScanner() {
@@ -1785,6 +1616,13 @@ function onScanSuccess(text) {
     if (scanning) return;
     if (Date.now()-lastScanAt < SCAN_COOLDOWN) return;
     scanning=true; lastScanAt=Date.now();
+
+    // GUARD: In subject mode, teacher must be logged in
+    if (scannerMode === 'subject' && !scannerTeacher) {
+        showToast('⚠️ Please log in as a teacher before scanning in Subject mode.');
+        scanning=false; return;
+    }
+
     const parts = text.split('|').map(s=>s.trim());
     if (parts.length>=3) logAttendance(parts);
     else displayScanInfo('N/A','Invalid QR Code','Failed');
@@ -1796,27 +1634,20 @@ function getTodayDate()    { return formatDateOnly(new Date()); }
 function getCurrentTime()  { return new Date().toString(); }
 function formatTimeOnly(str) { const d=new Date(str); return isNaN(d)?str:d.toLocaleTimeString([],{hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true}); }
 
-function getActionType(id) {
-    const today = getTodayDate();
-    const logs  = getCombinedLogs();
-    const todayLogs = logs.filter(e=>e.studentID===id&&e.date===today);
-    if (!todayLogs.length) return 'Time In';
-    todayLogs.sort((a,b)=>new Date(a.time)-new Date(b.time));
-    const last = todayLogs[todayLogs.length-1];
-    return (!last||!last.action)?'Time In':(last.action==='Time Out'?'Time In':'Time Out');
-}
-
 function logAttendance(details) {
     const [id, name, section, contact, pictureUrl] = details;
     if (!id||!name||!section) { displayScanInfo('N/A','Invalid QR Code','Failed'); return; }
 
-    const action    = getActionType(id);
+    // Determine teacher context based on current mode
+    const tName    = (scannerMode==='subject' && scannerTeacher) ? String(scannerTeacher.name).trim()    : '';
+    const tSubject = (scannerMode==='subject' && scannerTeacher) ? String(scannerTeacher.subject).trim() : '';
+    const tID      = (scannerMode==='subject' && scannerTeacher) ? String(scannerTeacher.id).trim()      : '';
+
+    // ACTION TYPE is scoped per subject/general — the core enhancement
+    const teacherContext = tID || 'general';
+    const action    = getActionType(id, teacherContext);
     const timestamp = getCurrentTime();
     const date      = getTodayDate();
-
-    const tName    = (scannerTeacher && scannerTeacher.name)    ? String(scannerTeacher.name).trim()    : '';
-    const tSubject = (scannerTeacher && scannerTeacher.subject) ? String(scannerTeacher.subject).trim() : '';
-    const tID      = (scannerTeacher && scannerTeacher.id)      ? String(scannerTeacher.id).trim()      : '';
 
     const entry = {
         studentID: id, studentName: name, studSection: section,
@@ -1831,45 +1662,82 @@ function logAttendance(details) {
 
     if (window.saveToFirebase) window.saveToFirebase(entry);
 
-    const payload = JSON.stringify({ studentID:id,studentName:name,studSection:section,studContact:contact||'N/A',time:timestamp,date,action,teacherName:tName,teacherSubject:tSubject,teacherID:tID });
+    // ── GOOGLE SHEETS: Single POST — Apps Script routes to Master + subject sheet ──
+    // Send ONE request only. Your Apps Script should write to both:
+    //   1. "Master Logs" sheet (all records)
+    //   2. The named sheet from data.sheet ("General Attendance" or subject name)
+    const sheetTarget = tID ? (tSubject || 'Subject Attendance') : 'General Attendance';
     const xhr = new XMLHttpRequest();
     xhr.open('POST', GOOGLE_SHEET_URL, true);
     xhr.setRequestHeader('Content-Type','text/plain');
-    xhr.send(payload);
+    xhr.send(JSON.stringify({
+        studentID:id, studentName:name, studSection:section,
+        studContact:contact||'N/A', time:timestamp, date, action,
+        teacherName:tName, teacherSubject:tSubject, teacherID:tID,
+        sheet: sheetTarget   // tells Apps Script which named sheet to write to
+    }));
 
-    displayScanInfo(id, name, action);
+    displayScanInfo(id, name, action, tSubject);
     if (document.getElementById('dashboard-tab').classList.contains('active')) updateDashboard();
     if (document.getElementById('logs-tab').classList.contains('active')) { renderFilters(); applyFilters(); }
 }
 
-// ════════════════════════════════════════════════════
-// SCAN POPUP
-// ════════════════════════════════════════════════════
-function displayScanInfo(id, name, action) {
+// ═══════════════════════════════════════════════════════════════
+// SCAN POPUP — enhanced to show student's sessions today
+// ═══════════════════════════════════════════════════════════════
+function displayScanInfo(id, name, action, subjectLabel) {
     const el = document.getElementById('scan-display');
     const icon  = action==='Time In'?'➡️':action==='Time Out'?'⬅️':'❌';
     const color = action==='Failed'?'var(--red)':'#15803d';
-    const badge = action==='Failed'?'<span class="badge badge-out">Failed</span>':
-                  action==='Time In'?'<span class="badge badge-in">Time In</span>':'<span class="badge badge-out">Time Out</span>';
-    const subLine = scannerTeacher
-        ? `<div style="font-size:12px;color:#16a34a;margin-top:4px;font-family:var(--font-mono);">📚 ${scannerTeacher.subject}</div>`
-        : `<div style="font-size:12px;color:var(--text-dim);margin-top:4px;font-family:var(--font-mono);">General Attendance</div>`;
-    el.innerHTML = `<div class="icon">${icon}</div>
+
+    const modeLabel = subjectLabel
+        ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:4px 10px;font-size:12px;color:#2563eb;font-family:var(--font-mono);display:inline-block;margin-top:6px;">📚 ${subjectLabel}</div>`
+        : `<div style="font-size:12px;color:var(--text-dim);margin-top:6px;font-family:var(--font-mono);">🏫 General Attendance</div>`;
+
+    // Build today's session summary for this student
+    const today = getTodayDate();
+    const allLogs = getCombinedLogs();
+    const studentLogs = allLogs.filter(l=>l.studentID===id&&l.date===today);
+    const sessionMap = {};
+    studentLogs.forEach(l=>{
+        const k = l.teacherID||'general';
+        if(!sessionMap[k]) sessionMap[k] = { subject: l.teacherSubject||'General Attendance', ins:[], outs:[] };
+        if(l.action==='Time In') sessionMap[k].ins.push(formatTimeOnly(l.time));
+        else sessionMap[k].outs.push(formatTimeOnly(l.time));
+    });
+    const sessionKeys = Object.keys(sessionMap);
+    let sessionHTML = '';
+    if (sessionKeys.length > 0) {
+        const rows = sessionKeys.map(k=>`
+            <div class="session-item">
+                <div class="${sessionMap[k].outs.length?'session-dot-out':'session-dot-in'}"></div>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${sessionMap[k].subject}</div>
+                    <div style="color:var(--text-dim);">In: ${sessionMap[k].ins.join(', ')||'—'}${sessionMap[k].outs.length?'  ·  Out: '+sessionMap[k].outs.join(', '):''}</div>
+                </div>
+            </div>`).join('');
+        sessionHTML = `<div class="session-list"><div class="session-list-title">Today's Sessions</div>${rows}</div>`;
+    }
+
+    el.innerHTML = `
+        <div class="icon">${icon}</div>
         <strong style="color:${color};">${action==='Failed'?'Scan Failed':action+' Recorded'}</strong>
-        <div style="font-size:16px;font-weight:600;color:var(--text);">${name}</div>
-        <div style="color:var(--text-muted);font-size:13px;font-family:var(--font-mono);">${id}</div>
-        ${subLine}<div style="margin-top:8px;">${badge}</div>`;
+        <div style="font-size:17px;font-weight:700;color:var(--text);">${name}</div>
+        <div style="color:var(--text-muted);font-size:12px;font-family:var(--font-mono);">${id}</div>
+        ${modeLabel}
+        ${sessionHTML}`;
+
     el.style.display='block';
     const txt = action==='Failed'||name==='Invalid QR Code'
         ? 'Attention. Scan failed. Please try again.'
-        : `${cleanNameForSpeech(name)}. ${action==='Time In'?'time in':'time out'} confirmed.`;
+        : `${cleanNameForSpeech(name)}. ${subjectLabel?subjectLabel+'.':''} ${action==='Time In'?'time in':'time out'} confirmed.`;
     speakMessage(txt);
-    setTimeout(()=>el.style.display='none', 3500);
+    setTimeout(()=>el.style.display='none', 4000);
 }
 
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // VOICE
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 let selectedVoice=null, availableVoices=[];
 function loadVoices() {
     availableVoices=speechSynthesis.getVoices();
@@ -1893,13 +1761,13 @@ function cleanNameForSpeech(n){ if(!n)return'Student'; return n.replace(/\./g,' 
 function speakMessage(text){ speechSynthesis.cancel(); setTimeout(()=>{ const u=new SpeechSynthesisUtterance(text); if(selectedVoice)u.voice=selectedVoice; u.rate=0.9;u.pitch=1.0;u.volume=1.0; speechSynthesis.speak(u); },50); }
 window.testVoice=()=>speakMessage('Magandang araw. Voice test confirmed. Good morning, this is a voice test.');
 
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // FILTERS
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 function renderFilters() {
     const logs=getCombinedLogs();
     const subjects={};
-    logs.forEach(l=>{ const s=l.teacherSubject||'(No Subject)'; subjects[s]=(subjects[s]||0)+1; });
+    logs.forEach(l=>{ const s=l.teacherSubject||'(General)'; subjects[s]=(subjects[s]||0)+1; });
     const sfBar=document.getElementById('subject-filter-bar');
     sfBar.innerHTML=`<button class="filter-btn ${!currentSubject?'active':''}" onclick="filterBySubject(null,this)">All <span class="filter-count">${logs.length}</span></button>`;
     Object.entries(subjects).sort((a,b)=>b[1]-a[1]).forEach(([s,c])=>{ const b=document.createElement('button');b.className='filter-btn'+(currentSubject===s?' active':'');b.innerHTML=`${s} <span class="filter-count">${c}</span>`;b.onclick=()=>filterBySubject(s,b);sfBar.appendChild(b); });
@@ -1915,26 +1783,46 @@ function handleSearch(){ searchTerm=document.getElementById('search-input').valu
 function clearSearch(){ document.getElementById('search-input').value=''; searchTerm=''; document.getElementById('clear-search').style.display='none'; attPage=1;applyFilters(); }
 function applyFilters(){
     let filtered=getCombinedLogs();
-    if(currentSubject)filtered=filtered.filter(l=>(l.teacherSubject||'(No Subject)')===currentSubject);
-    if(currentSection)filtered=filtered.filter(l=>l.studSection===currentSection);
+    if(currentSubject){
+        if(currentSubject==='(General)') filtered=filtered.filter(l=>!l.teacherSubject);
+        else filtered=filtered.filter(l=>l.teacherSubject===currentSubject);
+    }
+    if(currentSection) filtered=filtered.filter(l=>l.studSection===currentSection);
     const paired=pairEntries(filtered);
-    filteredPaired=searchTerm?paired.filter(e=>(e.studentID||'').toLowerCase().includes(searchTerm)||(e.studentName||'').toLowerCase().includes(searchTerm)||(e.studSection||'').toLowerCase().includes(searchTerm)):paired;
+    filteredPaired=searchTerm?paired.filter(e=>
+        (e.studentID||'').toLowerCase().includes(searchTerm)||
+        (e.studentName||'').toLowerCase().includes(searchTerm)||
+        (e.studSection||'').toLowerCase().includes(searchTerm)||
+        (e.subjectLabel||'').toLowerCase().includes(searchTerm)
+    ):paired;
     renderAttTable(filteredPaired);
 }
 
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // PAIR & RENDER TABLE
-// ════════════════════════════════════════════════════
+// Per-subject pairing: each student+date+teacher combo is separate
+// ═══════════════════════════════════════════════════════════════
 function pairEntries(entries) {
+    // Group by studentID + date + teacherID (so each subject gets its own row)
     const grouped={};
-    entries.forEach(e=>{ const k=`${e.studentID}_${e.date}`; if(!grouped[k])grouped[k]=[]; grouped[k].push(e); });
+    entries.forEach(e=>{
+        const k=`${e.studentID}_${e.date}_${e.teacherID||'general'}`;
+        if(!grouped[k]) grouped[k]=[];
+        grouped[k].push(e);
+    });
     const pairs=[];
     Object.values(grouped).forEach(g=>{
         g.sort((a,b)=>new Date(a.time)-new Date(b.time));
         let i=0;
         while(i<g.length){
             const cur=g[i];
-            const base={studentID:cur.studentID,studentName:cur.studentName,studSection:cur.studSection,date:cur.date,timeInRaw:null,timeOutRaw:null};
+            const base={
+                studentID:cur.studentID, studentName:cur.studentName,
+                studSection:cur.studSection, date:cur.date,
+                subjectLabel:cur.teacherSubject||'General Attendance',
+                teacherName:cur.teacherName||null,
+                timeInRaw:null, timeOutRaw:null
+            };
             if(cur.action==='Time In'){
                 base.timeInRaw=cur; let out=null;
                 for(let j=i+1;j<g.length;j++){if(g[j].action==='Time Out'){out=g[j];base.timeOutRaw=out;i=j;break;}}
@@ -1949,19 +1837,21 @@ window.pairEntries=pairEntries;
 
 function renderAttTable(paired) {
     const tbody=document.getElementById('report-body');
-    if(!paired||!paired.length){ tbody.innerHTML=`<tr><td colspan="7"><div class="empty-state"><div class="empty-icon">📋</div><p>No records found</p></div></td></tr>`; updateAttPagination(0,0);return; }
+    if(!paired||!paired.length){ tbody.innerHTML=`<tr><td colspan="8"><div class="empty-state"><div class="empty-icon">📋</div><p>No records found</p></div></td></tr>`; updateAttPagination(0,0);return; }
     const sorted=[...paired].sort((a,b)=>new Date(b.date+' '+(b.timeOut!=='-'?b.timeOut:b.timeIn))-new Date(a.date+' '+(a.timeOut!=='-'?a.timeOut:a.timeIn)));
     const total=sorted.length;
     const page=attPageSize>0?sorted.slice((attPage-1)*attPageSize,attPage*attPageSize):sorted;
     tbody.innerHTML='';
     page.forEach(e=>{
         const delBtns=[];
-        if(e.timeInRaw){ const k=`${e.timeInRaw.studentID}_${e.timeInRaw.date}_${e.timeInRaw.time}_${e.timeInRaw.action}`; const docId=window.attendanceDocIds?window.attendanceDocIds[k]:null; delBtns.push(`<button class="btn-ghost btn-sm" style="color:var(--red);border-color:rgba(220,38,38,0.3);" onclick='confirmDeleteEntry(${JSON.stringify(e.timeInRaw).replace(/'/g,"&#39;")},${docId?`"${docId}"`:null})'>🗑 In</button>`); }
-        if(e.timeOutRaw){ const k=`${e.timeOutRaw.studentID}_${e.timeOutRaw.date}_${e.timeOutRaw.time}_${e.timeOutRaw.action}`; const docId=window.attendanceDocIds?window.attendanceDocIds[k]:null; delBtns.push(`<button class="btn-ghost btn-sm" style="color:var(--red);border-color:rgba(220,38,38,0.3);" onclick='confirmDeleteEntry(${JSON.stringify(e.timeOutRaw).replace(/'/g,"&#39;")},${docId?`"${docId}"`:null})'>🗑 Out</button>`); }
+        if(e.timeInRaw){ const k=`${e.timeInRaw.studentID}_${e.timeInRaw.date}_${e.timeInRaw.time}_${e.timeInRaw.action}_${e.timeInRaw.teacherID||'general'}`; const docId=window.attendanceDocIds?window.attendanceDocIds[k]:null; delBtns.push(`<button class="btn-ghost btn-sm" style="color:var(--red);border-color:rgba(220,38,38,0.3);" onclick='confirmDeleteEntry(${JSON.stringify(e.timeInRaw).replace(/'/g,"&#39;")},${docId?`"${docId}"`:null})'>🗑 In</button>`); }
+        if(e.timeOutRaw){ const k=`${e.timeOutRaw.studentID}_${e.timeOutRaw.date}_${e.timeOutRaw.time}_${e.timeOutRaw.action}_${e.timeOutRaw.teacherID||'general'}`; const docId=window.attendanceDocIds?window.attendanceDocIds[k]:null; delBtns.push(`<button class="btn-ghost btn-sm" style="color:var(--red);border-color:rgba(220,38,38,0.3);" onclick='confirmDeleteEntry(${JSON.stringify(e.timeOutRaw).replace(/'/g,"&#39;")},${docId?`"${docId}"`:null})'>🗑 Out</button>`); }
+        const isGeneral = e.subjectLabel === 'General Attendance';
         tbody.innerHTML+=`<tr>
             <td><span style="font-family:var(--font-mono);font-size:12px;">${e.studentID}</span></td>
             <td><strong>${e.studentName}</strong></td>
             <td><span class="badge badge-section">${e.studSection}</span></td>
+            <td><span class="badge ${isGeneral?'badge-section':'badge-subject'}">${isGeneral?'🏫 General':'📚 '+e.subjectLabel}</span></td>
             <td><span class="badge badge-in">${e.timeIn}</span></td>
             <td><span class="badge ${e.timeOut!=='-'?'badge-out':'badge-section'}">${e.timeOut}</span></td>
             <td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted);">${e.date}</td>
@@ -1981,140 +1871,103 @@ function updateAttPagination(total,shown){
     document.getElementById('att-next').disabled=attPage>=totalPages||attPageSize===-1;
 }
 
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // DELETE ENTRY
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 function confirmDeleteEntry(entry,docId){
     showConfirm('🗑️','Delete Entry?',`Delete record for ${entry.studentName}?`,async()=>{
         let logs=JSON.parse(localStorage.getItem('attendance')||'[]');
-        logs=logs.filter(l=>!(l.studentID===entry.studentID&&l.date===entry.date&&l.time===entry.time&&l.action===entry.action));
+        logs=logs.filter(l=>!(l.studentID===entry.studentID&&l.date===entry.date&&l.time===entry.time&&l.action===entry.action&&(l.teacherID||null)===(entry.teacherID||null)));
         localStorage.setItem('attendance',JSON.stringify(logs));
         if(docId&&window.deleteFromFirebase)await window.deleteFromFirebase(docId);
         renderFilters();applyFilters();updateDashboard();
     });
 }
 
-// ════════════════════════════════════════════════════
-// ════════════════════════════════════════════════════
-// ADMIN PIN SYSTEM — default PIN: 012015
-// ════════════════════════════════════════════════════
-const ADMIN_PIN_KEY    = 'ark_admin_pin';
-const ADMIN_PIN_DEFAULT = '012015';
-let adminPinBuffer = '';
-let adminGateAction = 'manage'; // 'reset' or 'manage'
-let pendingTeacherChangePinId = null;
+// ═══════════════════════════════════════════════════════════════
+// ADMIN PIN SYSTEM
+// ═══════════════════════════════════════════════════════════════
+const ADMIN_PIN_KEY='ark_admin_pin', ADMIN_PIN_DEFAULT='012015';
+let adminPinBuffer='', adminGateAction='manage', pendingTeacherChangePinId=null;
+function getAdminPin(){ return localStorage.getItem(ADMIN_PIN_KEY)||ADMIN_PIN_DEFAULT; }
 
-function getAdminPin() {
-    return localStorage.getItem(ADMIN_PIN_KEY) || ADMIN_PIN_DEFAULT;
-}
-
-// Open admin gate: action = 'reset' | 'manage'
 function openAdminPinGate(action) {
-    adminGateAction = action;
-    adminPinBuffer  = '';
-    document.getElementById('admin-pin-error').textContent = '';
-    document.getElementById('admin-gate-title').textContent = action === 'reset' ? 'Confirm Reset' : 'Admin Panel';
-    document.getElementById('admin-gate-sub').textContent   = action === 'reset'
-        ? 'Enter admin PIN to permanently reset all attendance logs.'
-        : 'Enter admin PIN to access system management.';
-
-    // Show gate step, hide manage step
-    document.getElementById('admin-gate-step').style.display   = 'block';
-    document.getElementById('admin-manage-step').style.display = 'none';
+    adminGateAction=action; adminPinBuffer='';
+    document.getElementById('admin-pin-error').textContent='';
+    document.getElementById('admin-gate-title').textContent=action==='reset'?'Confirm Reset':'Admin Panel';
+    document.getElementById('admin-gate-sub').textContent=action==='reset'?'Enter admin PIN to permanently reset all local & Firebase attendance logs.':'Enter admin PIN to access system management.';
+    document.getElementById('admin-gate-step').style.display='block';
+    document.getElementById('admin-manage-step').style.display='none';
     updateAdminPinDisplay();
     document.getElementById('admin-pin-overlay').classList.add('visible');
 }
-
-function closeAdminPinOverlay() {
-    document.getElementById('admin-pin-overlay').classList.remove('visible');
-    adminPinBuffer = '';
-    updateAdminPinDisplay();
-}
-
-function adminPinKey(k) {
-    if (adminPinBuffer.length >= 6) return;
-    adminPinBuffer += k;
-    updateAdminPinDisplay();
-    document.getElementById('admin-pin-error').textContent = '';
-}
-
-function adminPinClear() {
-    adminPinBuffer = adminPinBuffer.slice(0, -1);
-    updateAdminPinDisplay();
-}
-
-function adminPinEnter() {
-    if (adminPinBuffer === getAdminPin()) {
-        document.getElementById('admin-pin-error').textContent = '';
-        if (adminGateAction === 'reset') {
-            closeAdminPinOverlay();
-            executeResetLogs();
-        } else {
-            // Show management panel
-            document.getElementById('admin-gate-step').style.display   = 'none';
-            document.getElementById('admin-manage-step').style.display = 'block';
-            // Reset to first tab
-            switchAdminTab('reset-tab', document.querySelector('.admin-tab'));
+function closeAdminPinOverlay(){ document.getElementById('admin-pin-overlay').classList.remove('visible'); adminPinBuffer=''; updateAdminPinDisplay(); }
+function adminPinKey(k){ if(adminPinBuffer.length>=6)return; adminPinBuffer+=k; updateAdminPinDisplay(); document.getElementById('admin-pin-error').textContent=''; }
+function adminPinClear(){ adminPinBuffer=adminPinBuffer.slice(0,-1); updateAdminPinDisplay(); }
+function adminPinEnter(){
+    if(adminPinBuffer===getAdminPin()){
+        document.getElementById('admin-pin-error').textContent='';
+        if(adminGateAction==='reset'){ closeAdminPinOverlay(); executeResetLogs(); }
+        else{
+            document.getElementById('admin-gate-step').style.display='none';
+            document.getElementById('admin-manage-step').style.display='block';
+            switchAdminTab('reset-tab',document.querySelector('.admin-tab'));
             renderAdminTeacherList();
-            // Clear change PIN inputs
-            document.getElementById('new-admin-pin-1').value = '';
-            document.getElementById('new-admin-pin-2').value = '';
-            document.getElementById('change-admin-pin-error').textContent = '';
+            document.getElementById('new-admin-pin-1').value='';
+            document.getElementById('new-admin-pin-2').value='';
+            document.getElementById('change-admin-pin-error').textContent='';
         }
     } else {
-        document.getElementById('admin-pin-error').textContent = '❌ Incorrect PIN. Try again.';
-        adminPinBuffer = '';
-        updateAdminPinDisplay();
+        document.getElementById('admin-pin-error').textContent='❌ Incorrect PIN. Try again.';
+        adminPinBuffer=''; updateAdminPinDisplay();
     }
 }
+function updateAdminPinDisplay(){ for(let i=0;i<6;i++) document.getElementById('apd'+i).classList.toggle('filled',i<adminPinBuffer.length); }
+function switchAdminTab(tabId,btn){ document.querySelectorAll('.admin-tab-content').forEach(c=>c.classList.remove('active')); document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active')); document.getElementById(tabId).classList.add('active'); if(btn)btn.classList.add('active'); }
 
-function updateAdminPinDisplay() {
-    for (let i = 0; i < 6; i++) {
-        document.getElementById('apd'+i).classList.toggle('filled', i < adminPinBuffer.length);
-    }
-}
-
-// ── Admin tabs ──
-function switchAdminTab(tabId, btn) {
-    document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
-    document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
-    document.getElementById(tabId).classList.add('active');
-    if (btn) btn.classList.add('active');
-}
-
-// ── Reset action (called after PIN verified or from inside admin panel) ──
-function executeResetLogs() {
+async function executeResetLogs(){
+    // 1. Clear local storage immediately so UI updates right away
     localStorage.removeItem('attendance');
-    window.remoteAttendanceLogs = [];
-    allPaired = []; filteredPaired = [];
+    allPaired=[]; filteredPaired=[];
     renderFilters(); applyFilters(); updateDashboard();
     closeAdminPinOverlay();
-    showToast('✅ All attendance logs have been reset.');
+
+    // 2. Count Firebase docs pending deletion
+    const totalDocs = Object.keys(window.attendanceDocIds || {}).length;
+    if (totalDocs > 0) {
+        showToast(`🔄 Deleting ${totalDocs} Firebase records…`);
+        try {
+            const deleted = await window.deleteAllFirebaseAttendance();
+            window.remoteAttendanceLogs = [];
+            renderFilters(); applyFilters(); updateDashboard();
+            showToast(`✅ Reset complete — ${deleted} Firebase records deleted.`);
+        } catch(e) {
+            console.error('Firebase bulk delete error:', e);
+            showToast('⚠️ Local reset done. Some Firebase records may remain — retry reset.');
+        }
+    } else {
+        window.remoteAttendanceLogs = [];
+        showToast('✅ All attendance logs have been reset.');
+    }
 }
 
-// ── Change Admin PIN ──
-function saveNewAdminPin() {
-    const p1 = document.getElementById('new-admin-pin-1').value.trim();
-    const p2 = document.getElementById('new-admin-pin-2').value.trim();
-    const err = document.getElementById('change-admin-pin-error');
-    if (!/^\d{4,6}$/.test(p1)) { err.textContent = '❌ PIN must be 4–6 digits.'; return; }
-    if (p1 !== p2) { err.textContent = '❌ PINs do not match.'; return; }
-    localStorage.setItem(ADMIN_PIN_KEY, p1);
-    document.getElementById('new-admin-pin-1').value = '';
-    document.getElementById('new-admin-pin-2').value = '';
-    err.textContent = '';
+function saveNewAdminPin(){
+    const p1=document.getElementById('new-admin-pin-1').value.trim();
+    const p2=document.getElementById('new-admin-pin-2').value.trim();
+    const err=document.getElementById('change-admin-pin-error');
+    if(!/^\d{4,6}$/.test(p1)){err.textContent='❌ PIN must be 4–6 digits.';return;}
+    if(p1!==p2){err.textContent='❌ PINs do not match.';return;}
+    localStorage.setItem(ADMIN_PIN_KEY,p1);
+    document.getElementById('new-admin-pin-1').value='';
+    document.getElementById('new-admin-pin-2').value='';
+    err.textContent='';
     showToast('✅ Admin PIN changed successfully!');
 }
 
-// ── Admin Teacher list (force delete / change PIN) ──
-function renderAdminTeacherList() {
-    const teachers = getTeachers();
-    const c = document.getElementById('admin-teacher-list');
-    if (!teachers.length) {
-        c.innerHTML = '<div class="empty-state" style="padding:24px 10px;"><div class="empty-icon" style="font-size:32px;">👩‍🏫</div><p>No teachers registered</p></div>';
-        return;
-    }
-    c.innerHTML = teachers.map(t => `
+function renderAdminTeacherList(){
+    const teachers=getTeachers(), c=document.getElementById('admin-teacher-list');
+    if(!teachers.length){ c.innerHTML='<div class="empty-state" style="padding:24px 10px;"><div class="empty-icon" style="font-size:32px;">👩‍🏫</div><p>No teachers registered</p></div>'; return; }
+    c.innerHTML=teachers.map(t=>`
         <div class="teacher-change-item">
             <div class="teacher-change-name">${t.name}</div>
             <div class="teacher-change-subject">📚 ${t.subject}</div>
@@ -2125,100 +1978,62 @@ function renderAdminTeacherList() {
         </div>`).join('');
 }
 
-async function adminForceDeleteTeacher(id) {
-    const teacher = getTeachers().find(t => t.id === id);
-    if (!teacher) return;
-    if (!confirm(`Force delete "${teacher.name}"? This cannot be undone.`)) return;
-
-    let local = JSON.parse(localStorage.getItem('teachers')||'[]');
-    local = local.filter(t => t.id !== id);
-    localStorage.setItem('teachers', JSON.stringify(local));
-
-    const docId = window.teacherDocIds ? window.teacherDocIds[id] : null;
-    if (docId && window.deleteTeacherFromFirebase) await window.deleteTeacherFromFirebase(docId);
-
-    if (scannerTeacher && scannerTeacher.id === id) clearScannerTeacher();
-    renderTeacherList();
-    renderScannerDropdown();
-    renderAdminTeacherList();
+async function adminForceDeleteTeacher(id){
+    const teacher=getTeachers().find(t=>t.id===id); if(!teacher)return;
+    if(!confirm(`Force delete "${teacher.name}"? This cannot be undone.`))return;
+    let local=JSON.parse(localStorage.getItem('teachers')||'[]');
+    local=local.filter(t=>t.id!==id);
+    localStorage.setItem('teachers',JSON.stringify(local));
+    const docId=window.teacherDocIds?window.teacherDocIds[id]:null;
+    if(docId&&window.deleteTeacherFromFirebase)await window.deleteTeacherFromFirebase(docId);
+    if(scannerTeacher&&scannerTeacher.id===id)clearScannerTeacher();
+    renderTeacherList(); renderScannerDropdown(); renderAdminTeacherList();
     showToast('✅ Teacher deleted.');
 }
 
-// ── Change teacher PIN (admin — no old PIN required) ──
-function openTeacherPinModal(id) {
-    const teacher = getTeachers().find(t => t.id === id);
-    if (!teacher) return;
-    pendingTeacherChangePinId = id;
-    document.getElementById('teacher-new-pin-name').textContent = teacher.name + ' — ' + teacher.subject;
-    document.getElementById('teacher-new-pin-1').value = '';
-    document.getElementById('teacher-new-pin-2').value = '';
-    document.getElementById('teacher-new-pin-error').textContent = '';
-    document.getElementById('teacher-new-pin-modal').style.display = 'flex';
+function openTeacherPinModal(id){
+    const teacher=getTeachers().find(t=>t.id===id); if(!teacher)return;
+    pendingTeacherChangePinId=id;
+    document.getElementById('teacher-new-pin-name').textContent=teacher.name+' — '+teacher.subject;
+    document.getElementById('teacher-new-pin-1').value='';
+    document.getElementById('teacher-new-pin-2').value='';
+    document.getElementById('teacher-new-pin-error').textContent='';
+    document.getElementById('teacher-new-pin-modal').style.display='flex';
 }
-
-function closeTeacherPinModal() {
-    document.getElementById('teacher-new-pin-modal').style.display = 'none';
-    pendingTeacherChangePinId = null;
-}
-
-async function saveTeacherNewPin() {
-    const p1  = document.getElementById('teacher-new-pin-1').value.trim();
-    const p2  = document.getElementById('teacher-new-pin-2').value.trim();
-    const err = document.getElementById('teacher-new-pin-error');
-    if (!/^\d{4,6}$/.test(p1)) { err.textContent = '❌ PIN must be 4–6 digits.'; return; }
-    if (p1 !== p2)              { err.textContent = '❌ PINs do not match.'; return; }
-    if (!pendingTeacherChangePinId) return;
-
-    // Update locally
-    let local = JSON.parse(localStorage.getItem('teachers')||'[]');
-    local = local.map(t => t.id === pendingTeacherChangePinId ? {...t, pin: p1} : t);
-    localStorage.setItem('teachers', JSON.stringify(local));
-
-    // Update in Firebase: delete old doc and re-save with new PIN
-    const teacher = getTeachers().find(t => t.id === pendingTeacherChangePinId);
-    const docId   = window.teacherDocIds ? window.teacherDocIds[pendingTeacherChangePinId] : null;
-    if (docId && window.deleteTeacherFromFirebase) await window.deleteTeacherFromFirebase(docId);
-    if (teacher && window.saveTeacherToFirebase) {
-        await window.saveTeacherToFirebase({...teacher, pin: p1});
-    }
-
-    // If this teacher is currently logged in as scanner teacher, update their PIN in state
-    if (scannerTeacher && scannerTeacher.id === pendingTeacherChangePinId) {
-        scannerTeacher = {...scannerTeacher, pin: p1};
-    }
-
-    closeTeacherPinModal();
-    renderTeacherList();
-    renderAdminTeacherList();
+function closeTeacherPinModal(){ document.getElementById('teacher-new-pin-modal').style.display='none'; pendingTeacherChangePinId=null; }
+async function saveTeacherNewPin(){
+    const p1=document.getElementById('teacher-new-pin-1').value.trim();
+    const p2=document.getElementById('teacher-new-pin-2').value.trim();
+    const err=document.getElementById('teacher-new-pin-error');
+    if(!/^\d{4,6}$/.test(p1)){err.textContent='❌ PIN must be 4–6 digits.';return;}
+    if(p1!==p2){err.textContent='❌ PINs do not match.';return;}
+    if(!pendingTeacherChangePinId)return;
+    let local=JSON.parse(localStorage.getItem('teachers')||'[]');
+    local=local.map(t=>t.id===pendingTeacherChangePinId?{...t,pin:p1}:t);
+    localStorage.setItem('teachers',JSON.stringify(local));
+    const teacher=getTeachers().find(t=>t.id===pendingTeacherChangePinId);
+    const docId=window.teacherDocIds?window.teacherDocIds[pendingTeacherChangePinId]:null;
+    if(docId&&window.deleteTeacherFromFirebase)await window.deleteTeacherFromFirebase(docId);
+    if(teacher&&window.saveTeacherToFirebase)await window.saveTeacherToFirebase({...teacher,pin:p1});
+    if(scannerTeacher&&scannerTeacher.id===pendingTeacherChangePinId)scannerTeacher={...scannerTeacher,pin:p1};
+    closeTeacherPinModal(); renderTeacherList(); renderAdminTeacherList();
     showToast('✅ Teacher PIN updated.');
 }
 
-// ── Toast ──
-function showToast(msg) {
-    let t = document.getElementById('ark-toast');
-    if (!t) {
-        t = document.createElement('div');
-        t.id = 'ark-toast';
-        t.style.cssText = `position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);
-            background:var(--text);color:var(--bg-card);padding:12px 22px;border-radius:12px;
-            font-size:13px;font-weight:600;font-family:var(--font-body);z-index:99999;
-            box-shadow:var(--shadow-md);opacity:0;transition:all 0.3s;pointer-events:none;
-            white-space:nowrap;max-width:calc(100vw - 40px);text-align:center;`;
-        document.body.appendChild(t);
-    }
-    t.textContent = msg;
-    requestAnimationFrame(() => { t.style.opacity='1'; t.style.transform='translateX(-50%) translateY(0)'; });
-    setTimeout(() => { t.style.opacity='0'; t.style.transform='translateX(-50%) translateY(20px)'; }, 3000);
+// ═══════════════════════════════════════════════════════════════
+// TOAST
+// ═══════════════════════════════════════════════════════════════
+function showToast(msg){
+    let t=document.getElementById('ark-toast');
+    if(!t){ t=document.createElement('div'); t.id='ark-toast'; t.style.cssText=`position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--text);color:var(--bg-card);padding:12px 22px;border-radius:12px;font-size:13px;font-weight:600;font-family:var(--font-body);z-index:99999;box-shadow:var(--shadow-md);opacity:0;transition:all 0.3s;pointer-events:none;white-space:nowrap;max-width:calc(100vw - 40px);text-align:center;`; document.body.appendChild(t); }
+    t.textContent=msg;
+    requestAnimationFrame(()=>{ t.style.opacity='1'; t.style.transform='translateX(-50%) translateY(0)'; });
+    setTimeout(()=>{ t.style.opacity='0'; t.style.transform='translateX(-50%) translateY(20px)'; },3000);
 }
 
-// Legacy stub so nothing breaks
-function showResetModal() { openAdminPinGate('reset'); }
-
-let resetPinBuffer = ''; // kept for compat, unused
-
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // CONFIRM MODAL
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 let confirmCallback=null;
 function showConfirm(icon,title,msg,onOk,okLabel='Confirm',danger=true){
     confirmCallback=onOk;
@@ -2226,18 +2041,16 @@ function showConfirm(icon,title,msg,onOk,okLabel='Confirm',danger=true){
     document.getElementById('confirm-title').textContent=title;
     document.getElementById('confirm-msg').textContent=msg;
     const btn=document.getElementById('confirm-ok');
-    btn.textContent=okLabel||'Confirm';
-    btn.className=danger?'btn-danger':'';
-    btn.style.background=danger?'':'var(--red)';
+    btn.textContent=okLabel||'Confirm'; btn.className=danger?'btn-danger':''; btn.style.background=danger?'':'var(--red)';
     document.getElementById('confirm-overlay').style.display='block';
 }
 function closeConfirm(){ document.getElementById('confirm-overlay').style.display='none'; confirmCallback=null; }
 document.getElementById('confirm-ok').addEventListener('click',()=>{ if(confirmCallback)confirmCallback(); closeConfirm(); });
 document.getElementById('confirm-overlay').addEventListener('click',e=>{ if(e.target.id==='confirm-overlay')closeConfirm(); });
 
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // DASHBOARD
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 function updateDashboard(){
     const today=getTodayDate(), logs=getCombinedLogs();
     const todayLogs=logs.filter(l=>l.date===today);
@@ -2273,7 +2086,6 @@ function updateHourlyChart(todayLogs){
     const ctx=document.getElementById('hourlyChart'); if(hourlyChart)hourlyChart.destroy();
     hourlyChart=new Chart(ctx,{type:'line',data:{labels:Array.from({length:24},(_,i)=>`${i}:00`),datasets:[{label:'Scans',data:hours,borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,0.08)',tension:0.4,fill:true,pointRadius:3,pointBackgroundColor:'#dc2626'}]},options:{responsive:true,plugins:{legend:{labels:{color:'#78716c'}}},scales:{y:{beginAtZero:true,ticks:{color:'#78716c',stepSize:1},grid:{color:'rgba(0,0,0,0.05)'}},x:{ticks:{color:'#78716c',maxRotation:0,autoSkip:true,maxTicksLimit:12},grid:{color:'rgba(0,0,0,0.05)'}}}}});
 }
-
 function updateWeeklyChart(logs){
     const days=[],today=new Date();
     for(let i=6;i>=0;i--){const d=new Date(today);d.setDate(d.getDate()-i);days.push(formatDateOnly(d));}
@@ -2281,7 +2093,6 @@ function updateWeeklyChart(logs){
     const ctx=document.getElementById('weeklyChart'); if(weeklyChart)weeklyChart.destroy();
     weeklyChart=new Chart(ctx,{type:'bar',data:{labels:days.map(d=>new Date(d).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'})),datasets:[{label:'Unique Students',data:counts,backgroundColor:'rgba(220,38,38,0.75)',borderColor:'#dc2626',borderWidth:2,borderRadius:6}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{color:'#78716c',stepSize:1},grid:{color:'rgba(0,0,0,0.05)'}},x:{ticks:{color:'#78716c'},grid:{color:'rgba(0,0,0,0.05)'}}}}});
 }
-
 function renderRecentActivity(logs){
     const list=document.getElementById('activity-list');
     const sorted=[...logs].sort((a,b)=>new Date(b.time)-new Date(a.time)).slice(0,20);
@@ -2291,52 +2102,58 @@ function renderRecentActivity(logs){
             <div class="activity-icon">${l.action==='Time In'?'➡️':'⬅️'}</div>
             <div style="flex:1;">
                 <div class="activity-name">${l.studentName}</div>
-                <div class="activity-meta">${l.studSection}${l.teacherSubject?' · '+l.teacherSubject:''}</div>
+                <div class="activity-meta">${l.studSection}${l.teacherSubject?' · 📚 '+l.teacherSubject:' · 🏫 General'}</div>
             </div>
             <div class="activity-time">${getTimeAgo(new Date(l.time))}</div>
         </div>`).join('');
 }
-
 function getTimeAgo(date){ const s=Math.floor((Date.now()-date)/1000); if(s<60)return'Just now'; const m=Math.floor(s/60);if(m<60)return`${m}m ago`; const h=Math.floor(m/60);if(h<24)return`${h}h ago`; return`${Math.floor(h/24)}d ago`; }
 
-// ════════════════════════════════════════════════════
-// EXCEL EXPORT
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
+// EXCEL EXPORT — one sheet per subject
+// ═══════════════════════════════════════════════════════════════
 function downloadExcel(){
     const logs=getCombinedLogs(); if(!logs.length){alert('No data to export.');return;}
-    const paired=pairEntries(logs),wb=XLSX.utils.book_new(),byDate={};
-    paired.forEach(r=>{ if(!byDate[r.date])byDate[r.date]=[]; byDate[r.date].push({Date:r.date,ID:r.studentID,Name:r.studentName,Section:r.studSection,'Time In':r.timeIn,'Time Out':r.timeOut}); });
-    Object.keys(byDate).sort().reverse().forEach(date=>{ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(byDate[date]),date.slice(5)); });
+    const paired=pairEntries(logs), wb=XLSX.utils.book_new();
+    // Group by date + subject
+    const bySheet={};
+    paired.forEach(r=>{
+        const sheetName=(r.subjectLabel==='General Attendance'?'General':r.subjectLabel).substring(0,28)+'_'+r.date.slice(5);
+        if(!bySheet[sheetName])bySheet[sheetName]=[];
+        bySheet[sheetName].push({Date:r.date,ID:r.studentID,Name:r.studentName,Section:r.studSection,Subject:r.subjectLabel,'Time In':r.timeIn,'Time Out':r.timeOut});
+    });
+    Object.keys(bySheet).sort().forEach(name=>{ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(bySheet[name]),name); });
     XLSX.writeFile(wb,`ARK_Attendance_${getTodayDate()}.xlsx`);
 }
 
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // getCombinedLogs fallback
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 function getCombinedLogs(){
-    if (window.getCombinedLogs) return window.getCombinedLogs();
+    if(window.getCombinedLogs) return window.getCombinedLogs();
     const local=JSON.parse(localStorage.getItem('attendance')||'[]');
     const remote=window.remoteAttendanceLogs||[];
     const map={};
-    [...remote,...local].forEach(e=>{ const k=`${e.studentID}_${e.date}_${e.time}_${e.action}`; if(!map[k])map[k]=e; });
+    [...remote,...local].forEach(e=>{ const k=`${e.studentID}_${e.date}_${e.time}_${e.action}_${e.teacherID||'general'}`; if(!map[k])map[k]=e; });
     return Object.values(map);
 }
 
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // FIREBASE CALLBACKS
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 window.onAttendanceUpdate=()=>{ const a=document.querySelector('.tab-content.active'); if(a&&a.id==='dashboard-tab')updateDashboard(); if(a&&a.id==='logs-tab'){renderFilters();applyFilters();} };
 window.onTeachersUpdate=()=>{ renderTeacherList(); renderScannerDropdown(); renderFilters(); };
 
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 // INIT
-// ════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded',()=>{
     setTimeout(loadVoices,200);
     window.scannerStarted=false;
     updateDashboard();
     renderTeacherList();
     renderScannerDropdown();
+    setMode('general'); // start in general mode
     setInterval(updateDashboard,30000);
 });
 </script>
