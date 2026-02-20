@@ -70,6 +70,7 @@
             const allDocIds = Object.values(window.attendanceDocIds || {});
             if (!allDocIds.length) return 0;
             let deleted = 0;
+            // Batch delete in parallel chunks of 20
             const chunkSize = 20;
             for (let i = 0; i < allDocIds.length; i += chunkSize) {
                 const chunk = allDocIds.slice(i, i + chunkSize);
@@ -672,8 +673,8 @@
         .scan-active-name { font-family: var(--font-display); font-weight: 700; font-size: 15px; color: #15803d; }
         .scan-active-subject { font-size: 12px; color: #16a34a; margin-top: 2px; font-weight: 600; }
 
-        /* ── ENTRANCE MODE BAR ── */
-        .entrance-mode-bar {
+        /* ── GENERAL MODE BAR ── */
+        .general-mode-bar {
             background: linear-gradient(135deg, #eff6ff, #dbeafe);
             border: 1px solid #bfdbfe;
             border-radius: var(--radius-sm);
@@ -683,7 +684,7 @@
             align-items: center;
             gap: 12px;
         }
-        .entrance-mode-bar.visible { display: flex; }
+        .general-mode-bar.visible { display: flex; }
         .gen-dot { width: 10px; height: 10px; background: #2563eb; border-radius: 50%; animation: pulse-blue 2s infinite; flex-shrink: 0; }
         @keyframes pulse-blue {
             0%, 100% { box-shadow: 0 0 0 0 rgba(37,99,235,0.4); }
@@ -1071,14 +1072,24 @@
     <div class="card" style="max-width:580px;margin:0 auto;">
         <div class="card-title"><span>📷</span> QR Code Scanner</div>
 
+        <!-- HOW IT WORKS -->
+        <div class="how-it-works">
+            <div class="how-title">💡 How Per-Subject Scanning Works</div>
+            <div class="how-steps">
+                <div class="how-step"><div class="how-step-num">1</div><span>Select <strong>General Attendance</strong> mode — students scan once for arrival/departure (school-wide).</span></div>
+                <div class="how-step"><div class="how-step-num">2</div><span>Switch to <strong>Subject / Teacher</strong> mode, log in as a teacher, then scan — students can scan independently for each subject session.</span></div>
+                <div class="how-step"><div class="how-step-num">3</div><span>Each student gets a separate Time In / Time Out record per subject. They can attend <strong>multiple subjects in one day</strong>.</span></div>
+            </div>
+        </div>
+
         <!-- MODE SELECTOR -->
         <div class="session-mode-card">
             <div class="session-mode-label">📡 Scanning Mode</div>
             <div class="mode-toggle-row">
                 <button class="mode-btn active" id="mode-btn-general" onclick="setMode('general')">
                     <span class="mode-icon">🏫</span>
-                    <span class="mode-name">ARK Entrance Attendance</span>
-                    <span class="mode-desc">School entrance & departure</span>
+                    <span class="mode-name">General Attendance</span>
+                    <span class="mode-desc">School-wide arrival/departure</span>
                 </button>
                 <button class="mode-btn" id="mode-btn-subject" onclick="setMode('subject')">
                     <span class="mode-icon">📚</span>
@@ -1087,12 +1098,12 @@
                 </button>
             </div>
 
-            <!-- ENTRANCE MODE INFO -->
-            <div class="entrance-mode-bar visible" id="general-mode-bar">
+            <!-- GENERAL MODE INFO -->
+            <div class="general-mode-bar visible" id="general-mode-bar">
                 <div class="gen-dot"></div>
                 <div style="flex:1;">
-                    <div style="font-family:var(--font-display);font-weight:700;font-size:14px;color:#1d4ed8;">ARK Entrance Attendance Mode</div>
-                    <div style="font-size:12px;color:#2563eb;margin-top:2px;">Scans are recorded as school entrance & departure logs.</div>
+                    <div style="font-family:var(--font-display);font-weight:700;font-size:14px;color:#1d4ed8;">General Attendance Mode</div>
+                    <div style="font-size:12px;color:#2563eb;margin-top:2px;">Scans are recorded without a subject/teacher tag.</div>
                 </div>
             </div>
 
@@ -1110,8 +1121,8 @@
         </div>
 
         <!-- ACTIVE SESSION BARS -->
-        <div class="entrance-mode-bar" id="general-active-bar" style="display:none;">
-            <!-- shown when actually scanning in entrance mode -->
+        <div class="general-mode-bar" id="general-active-bar" style="display:none;">
+            <!-- shown when actually scanning in general mode -->
         </div>
 
         <div class="scanner-active-bar" id="scanner-active-bar">
@@ -1341,20 +1352,22 @@ function setMode(mode) {
     document.getElementById('mode-btn-general').classList.toggle('active', mode === 'general');
     document.getElementById('mode-btn-subject').classList.toggle('active', mode === 'subject');
 
-    const entranceBar     = document.getElementById('general-mode-bar');
+    const generalBar      = document.getElementById('general-mode-bar');
     const teacherSection  = document.getElementById('teacher-select-section');
     const scannerActiveBar = document.getElementById('scanner-active-bar');
 
     if (mode === 'general') {
-        entranceBar.classList.add('visible');
+        generalBar.classList.add('visible');
         teacherSection.classList.remove('visible');
+        // Keep scanner teacher cleared when switching to general
         scannerActiveBar.classList.remove('visible');
         document.getElementById('context-bar').classList.remove('visible');
         scannerTeacher   = null;
         loggedInTeacher  = null;
     } else {
-        entranceBar.classList.remove('visible');
+        generalBar.classList.remove('visible');
         teacherSection.classList.add('visible');
+        // Restore active bar if teacher already logged in
         if (scannerTeacher) {
             scannerActiveBar.classList.add('visible');
         }
@@ -1548,14 +1561,21 @@ function updatePinDisplay() {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// CORE LOGIC: PER-SUBJECT ACTION TYPE
+// ██████████████████████████████████████████████████████████████
+//  CORE LOGIC: PER-SUBJECT ACTION TYPE
+//
+//  KEY CHANGE: getActionType now scopes Time In/Out tracking
+//  by BOTH studentID AND teacherID (or 'general').
+//  This allows a student to have independent sessions per subject.
+// ██████████████████████████████████████████████████████████████
 // ═══════════════════════════════════════════════════════════════
 
 function getActionType(studentId, teacherContext) {
     const today    = getTodayDate();
     const logs     = getCombinedLogs();
-    const scopeKey = teacherContext || 'general';
+    const scopeKey = teacherContext || 'general'; // 'general' or teacherID
 
+    // Filter logs for this student, today, in this specific scope (subject/general)
     const scopedLogs = logs.filter(e =>
         e.studentID === studentId &&
         e.date === today &&
@@ -1564,6 +1584,7 @@ function getActionType(studentId, teacherContext) {
 
     if (!scopedLogs.length) return 'Time In';
 
+    // Sort by time and look at the last action for this scope
     scopedLogs.sort((a,b) => new Date(a.time) - new Date(b.time));
     const last = scopedLogs[scopedLogs.length - 1];
     return (!last || !last.action) ? 'Time In' : (last.action === 'Time Out' ? 'Time In' : 'Time Out');
@@ -1574,7 +1595,7 @@ function getActionType(studentId, teacherContext) {
 // ═══════════════════════════════════════════════════════════════
 const html5QrCode = new Html5Qrcode("qr-reader");
 let scanning = false, lastScanAt = 0;
-const SCAN_COOLDOWN = 10000;
+const SCAN_COOLDOWN = 10000; // 10 second delay to prevent accidental/double scans
 const GOOGLE_SHEET_URL = "https://script.google.com/macros/s/AKfycbzz84gbAmsUSMnvxAqYHSc1iAvL1XscsJPIX3QTX8vH234VzxlMAfDORNOvq1Hoe8w1qw/exec";
 
 function startScanner() {
@@ -1596,6 +1617,7 @@ function onScanSuccess(text) {
     if (Date.now()-lastScanAt < SCAN_COOLDOWN) return;
     scanning=true; lastScanAt=Date.now();
 
+    // GUARD: In subject mode, teacher must be logged in
     if (scannerMode === 'subject' && !scannerTeacher) {
         showToast('⚠️ Please log in as a teacher before scanning in Subject mode.');
         scanning=false; return;
@@ -1616,10 +1638,12 @@ function logAttendance(details) {
     const [id, name, section, contact, pictureUrl] = details;
     if (!id||!name||!section) { displayScanInfo('N/A','Invalid QR Code','Failed'); return; }
 
+    // Determine teacher context based on current mode
     const tName    = (scannerMode==='subject' && scannerTeacher) ? String(scannerTeacher.name).trim()    : '';
     const tSubject = (scannerMode==='subject' && scannerTeacher) ? String(scannerTeacher.subject).trim() : '';
     const tID      = (scannerMode==='subject' && scannerTeacher) ? String(scannerTeacher.id).trim()      : '';
 
+    // ACTION TYPE is scoped per subject/general — the core enhancement
     const teacherContext = tID || 'general';
     const action    = getActionType(id, teacherContext);
     const timestamp = getCurrentTime();
@@ -1638,7 +1662,11 @@ function logAttendance(details) {
 
     if (window.saveToFirebase) window.saveToFirebase(entry);
 
-    const sheetTarget = tID ? (tSubject || 'Subject Attendance') : 'ARK Entrance Attendance';
+    // ── GOOGLE SHEETS: Single POST — Apps Script routes to Master + subject sheet ──
+    // Send ONE request only. Your Apps Script should write to both:
+    //   1. "Master Logs" sheet (all records)
+    //   2. The named sheet from data.sheet ("General Attendance" or subject name)
+    const sheetTarget = tID ? (tSubject || 'Subject Attendance') : 'General Attendance';
     const xhr = new XMLHttpRequest();
     xhr.open('POST', GOOGLE_SHEET_URL, true);
     xhr.setRequestHeader('Content-Type','text/plain');
@@ -1646,7 +1674,7 @@ function logAttendance(details) {
         studentID:id, studentName:name, studSection:section,
         studContact:contact||'N/A', time:timestamp, date, action,
         teacherName:tName, teacherSubject:tSubject, teacherID:tID,
-        sheet: sheetTarget
+        sheet: sheetTarget   // tells Apps Script which named sheet to write to
     }));
 
     displayScanInfo(id, name, action, tSubject);
@@ -1655,7 +1683,7 @@ function logAttendance(details) {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// SCAN POPUP
+// SCAN POPUP — enhanced to show student's sessions today
 // ═══════════════════════════════════════════════════════════════
 function displayScanInfo(id, name, action, subjectLabel) {
     const el = document.getElementById('scan-display');
@@ -1664,15 +1692,16 @@ function displayScanInfo(id, name, action, subjectLabel) {
 
     const modeLabel = subjectLabel
         ? `<div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:4px 10px;font-size:12px;color:#2563eb;font-family:var(--font-mono);display:inline-block;margin-top:6px;">📚 ${subjectLabel}</div>`
-        : `<div style="font-size:12px;color:var(--text-dim);margin-top:6px;font-family:var(--font-mono);">🏫 ARK Entrance Attendance</div>`;
+        : `<div style="font-size:12px;color:var(--text-dim);margin-top:6px;font-family:var(--font-mono);">🏫 General Attendance</div>`;
 
+    // Build today's session summary for this student
     const today = getTodayDate();
     const allLogs = getCombinedLogs();
     const studentLogs = allLogs.filter(l=>l.studentID===id&&l.date===today);
     const sessionMap = {};
     studentLogs.forEach(l=>{
         const k = l.teacherID||'general';
-        if(!sessionMap[k]) sessionMap[k] = { subject: l.teacherSubject||'ARK Entrance Attendance', ins:[], outs:[] };
+        if(!sessionMap[k]) sessionMap[k] = { subject: l.teacherSubject||'General Attendance', ins:[], outs:[] };
         if(l.action==='Time In') sessionMap[k].ins.push(formatTimeOnly(l.time));
         else sessionMap[k].outs.push(formatTimeOnly(l.time));
     });
@@ -1730,7 +1759,7 @@ if(speechSynthesis.onvoiceschanged!==undefined)speechSynthesis.onvoiceschanged=l
 setTimeout(loadVoices,100);
 function cleanNameForSpeech(n){ if(!n)return'Student'; return n.replace(/\./g,' ').trim().replace(/\s+/g,', '); }
 function speakMessage(text){ speechSynthesis.cancel(); setTimeout(()=>{ const u=new SpeechSynthesisUtterance(text); if(selectedVoice)u.voice=selectedVoice; u.rate=0.9;u.pitch=1.0;u.volume=1.0; speechSynthesis.speak(u); },50); }
-window.testVoice=()=>speakMessage('Good morning, this is a voice test.');
+window.testVoice=()=>speakMessage('Magandang araw. Voice test confirmed. Good morning, this is a voice test.');
 
 // ═══════════════════════════════════════════════════════════════
 // FILTERS
@@ -1738,7 +1767,7 @@ window.testVoice=()=>speakMessage('Good morning, this is a voice test.');
 function renderFilters() {
     const logs=getCombinedLogs();
     const subjects={};
-    logs.forEach(l=>{ const s=l.teacherSubject||'(ARK Entrance)'; subjects[s]=(subjects[s]||0)+1; });
+    logs.forEach(l=>{ const s=l.teacherSubject||'(General)'; subjects[s]=(subjects[s]||0)+1; });
     const sfBar=document.getElementById('subject-filter-bar');
     sfBar.innerHTML=`<button class="filter-btn ${!currentSubject?'active':''}" onclick="filterBySubject(null,this)">All <span class="filter-count">${logs.length}</span></button>`;
     Object.entries(subjects).sort((a,b)=>b[1]-a[1]).forEach(([s,c])=>{ const b=document.createElement('button');b.className='filter-btn'+(currentSubject===s?' active':'');b.innerHTML=`${s} <span class="filter-count">${c}</span>`;b.onclick=()=>filterBySubject(s,b);sfBar.appendChild(b); });
@@ -1755,7 +1784,7 @@ function clearSearch(){ document.getElementById('search-input').value=''; search
 function applyFilters(){
     let filtered=getCombinedLogs();
     if(currentSubject){
-        if(currentSubject==='(ARK Entrance)') filtered=filtered.filter(l=>!l.teacherSubject);
+        if(currentSubject==='(General)') filtered=filtered.filter(l=>!l.teacherSubject);
         else filtered=filtered.filter(l=>l.teacherSubject===currentSubject);
     }
     if(currentSection) filtered=filtered.filter(l=>l.studSection===currentSection);
@@ -1771,8 +1800,10 @@ function applyFilters(){
 
 // ═══════════════════════════════════════════════════════════════
 // PAIR & RENDER TABLE
+// Per-subject pairing: each student+date+teacher combo is separate
 // ═══════════════════════════════════════════════════════════════
 function pairEntries(entries) {
+    // Group by studentID + date + teacherID (so each subject gets its own row)
     const grouped={};
     entries.forEach(e=>{
         const k=`${e.studentID}_${e.date}_${e.teacherID||'general'}`;
@@ -1788,7 +1819,7 @@ function pairEntries(entries) {
             const base={
                 studentID:cur.studentID, studentName:cur.studentName,
                 studSection:cur.studSection, date:cur.date,
-                subjectLabel:cur.teacherSubject||'ARK Entrance Attendance',
+                subjectLabel:cur.teacherSubject||'General Attendance',
                 teacherName:cur.teacherName||null,
                 timeInRaw:null, timeOutRaw:null
             };
@@ -1815,12 +1846,12 @@ function renderAttTable(paired) {
         const delBtns=[];
         if(e.timeInRaw){ const k=`${e.timeInRaw.studentID}_${e.timeInRaw.date}_${e.timeInRaw.time}_${e.timeInRaw.action}_${e.timeInRaw.teacherID||'general'}`; const docId=window.attendanceDocIds?window.attendanceDocIds[k]:null; delBtns.push(`<button class="btn-ghost btn-sm" style="color:var(--red);border-color:rgba(220,38,38,0.3);" onclick='confirmDeleteEntry(${JSON.stringify(e.timeInRaw).replace(/'/g,"&#39;")},${docId?`"${docId}"`:null})'>🗑 In</button>`); }
         if(e.timeOutRaw){ const k=`${e.timeOutRaw.studentID}_${e.timeOutRaw.date}_${e.timeOutRaw.time}_${e.timeOutRaw.action}_${e.timeOutRaw.teacherID||'general'}`; const docId=window.attendanceDocIds?window.attendanceDocIds[k]:null; delBtns.push(`<button class="btn-ghost btn-sm" style="color:var(--red);border-color:rgba(220,38,38,0.3);" onclick='confirmDeleteEntry(${JSON.stringify(e.timeOutRaw).replace(/'/g,"&#39;")},${docId?`"${docId}"`:null})'>🗑 Out</button>`); }
-        const isEntrance = e.subjectLabel === 'ARK Entrance Attendance';
+        const isGeneral = e.subjectLabel === 'General Attendance';
         tbody.innerHTML+=`<tr>
             <td><span style="font-family:var(--font-mono);font-size:12px;">${e.studentID}</span></td>
             <td><strong>${e.studentName}</strong></td>
             <td><span class="badge badge-section">${e.studSection}</span></td>
-            <td><span class="badge ${isEntrance?'badge-section':'badge-subject'}">${isEntrance?'🏫 ARK Entrance':'📚 '+e.subjectLabel}</span></td>
+            <td><span class="badge ${isGeneral?'badge-section':'badge-subject'}">${isGeneral?'🏫 General':'📚 '+e.subjectLabel}</span></td>
             <td><span class="badge badge-in">${e.timeIn}</span></td>
             <td><span class="badge ${e.timeOut!=='-'?'badge-out':'badge-section'}">${e.timeOut}</span></td>
             <td style="font-family:var(--font-mono);font-size:12px;color:var(--text-muted);">${e.date}</td>
@@ -1895,11 +1926,13 @@ function updateAdminPinDisplay(){ for(let i=0;i<6;i++) document.getElementById('
 function switchAdminTab(tabId,btn){ document.querySelectorAll('.admin-tab-content').forEach(c=>c.classList.remove('active')); document.querySelectorAll('.admin-tab').forEach(b=>b.classList.remove('active')); document.getElementById(tabId).classList.add('active'); if(btn)btn.classList.add('active'); }
 
 async function executeResetLogs(){
+    // 1. Clear local storage immediately so UI updates right away
     localStorage.removeItem('attendance');
     allPaired=[]; filteredPaired=[];
     renderFilters(); applyFilters(); updateDashboard();
     closeAdminPinOverlay();
 
+    // 2. Count Firebase docs pending deletion
     const totalDocs = Object.keys(window.attendanceDocIds || {}).length;
     if (totalDocs > 0) {
         showToast(`🔄 Deleting ${totalDocs} Firebase records…`);
@@ -2069,7 +2102,7 @@ function renderRecentActivity(logs){
             <div class="activity-icon">${l.action==='Time In'?'➡️':'⬅️'}</div>
             <div style="flex:1;">
                 <div class="activity-name">${l.studentName}</div>
-                <div class="activity-meta">${l.studSection}${l.teacherSubject?' · 📚 '+l.teacherSubject:' · 🏫 ARK Entrance'}</div>
+                <div class="activity-meta">${l.studSection}${l.teacherSubject?' · 📚 '+l.teacherSubject:' · 🏫 General'}</div>
             </div>
             <div class="activity-time">${getTimeAgo(new Date(l.time))}</div>
         </div>`).join('');
@@ -2077,14 +2110,15 @@ function renderRecentActivity(logs){
 function getTimeAgo(date){ const s=Math.floor((Date.now()-date)/1000); if(s<60)return'Just now'; const m=Math.floor(s/60);if(m<60)return`${m}m ago`; const h=Math.floor(m/60);if(h<24)return`${h}h ago`; return`${Math.floor(h/24)}d ago`; }
 
 // ═══════════════════════════════════════════════════════════════
-// EXCEL EXPORT
+// EXCEL EXPORT — one sheet per subject
 // ═══════════════════════════════════════════════════════════════
 function downloadExcel(){
     const logs=getCombinedLogs(); if(!logs.length){alert('No data to export.');return;}
     const paired=pairEntries(logs), wb=XLSX.utils.book_new();
+    // Group by date + subject
     const bySheet={};
     paired.forEach(r=>{
-        const sheetName=(r.subjectLabel==='ARK Entrance Attendance'?'ARK Entrance':r.subjectLabel).substring(0,28)+'_'+r.date.slice(5);
+        const sheetName=(r.subjectLabel==='General Attendance'?'General':r.subjectLabel).substring(0,28)+'_'+r.date.slice(5);
         if(!bySheet[sheetName])bySheet[sheetName]=[];
         bySheet[sheetName].push({Date:r.date,ID:r.studentID,Name:r.studentName,Section:r.studSection,Subject:r.subjectLabel,'Time In':r.timeIn,'Time Out':r.timeOut});
     });
@@ -2119,7 +2153,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     updateDashboard();
     renderTeacherList();
     renderScannerDropdown();
-    setMode('general');
+    setMode('general'); // start in general mode
     setInterval(updateDashboard,30000);
 });
 </script>
